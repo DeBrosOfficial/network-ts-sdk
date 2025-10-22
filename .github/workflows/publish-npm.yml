@@ -24,7 +24,7 @@ jobs:
         run: npm install --frozen-lockfile
 
       - name: Build SDK
-        run: npm build
+        run: npm run build
 
       - name: Publish to npm
         run: npm publish --access public
@@ -45,13 +45,13 @@ jobs:
         with:
           node-version: '18'
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@network'
+          scope: 'network-ts-sdk'
 
       - name: Install dependencies
         run: npm install --frozen-lockfile
 
       - name: Build SDK
-        run: npm build
+        run: npm run build
 
       - name: Publish to GitHub Packages
         run: npm publish
