@@ -1,4 +1,4 @@
-# @network/sdk - TypeScript SDK for DeBros Network
+# @debros/network-ts-sdk - TypeScript SDK for DeBros Network
 
 A modern, isomorphic TypeScript SDK for the DeBros Network gateway. Works seamlessly in both Node.js and browser environments with support for database operations, pub/sub messaging, and network management.
 
@@ -14,7 +14,7 @@ A modern, isomorphic TypeScript SDK for the DeBros Network gateway. Works seamle
 ## Installation
 
 ```bash
-npm install @network/network-ts-sdk
+npm install @debros/network-ts-sdk
 ```
 
 ## Quick Start
@@ -22,7 +22,7 @@ npm install @network/network-ts-sdk
 ### Initialize the Client
 
 ```typescript
-import { createClient } from "@network/sdk";
+import { createClient } from "@debros/network-ts-sdk";
 
 const client = createClient({
   baseURL: "http://localhost:6001",
@@ -234,7 +234,7 @@ interface ClientConfig {
 By default, credentials are stored in memory. For browser apps, use localStorage:
 
 ```typescript
-import { createClient, LocalStorageAdapter } from "@network/sdk";
+import { createClient, LocalStorageAdapter } from "@debros/network-ts-sdk";
 
 const client = createClient({
   baseURL: "http://localhost:6001",
@@ -248,7 +248,7 @@ const client = createClient({
 The SDK throws `SDKError` for all errors:
 
 ```typescript
-import { SDKError } from "@network/sdk";
+import { SDKError } from "@debros/network-ts-sdk";
 
 try {
   await client.db.query("SELECT * FROM nonexistent");
@@ -268,7 +268,7 @@ The SDK works in browsers with minimal setup:
 
 ```typescript
 // Browser example
-import { createClient } from "@network/sdk";
+import { createClient } from "@debros/network-ts-sdk";
 
 const client = createClient({
   baseURL: "https://gateway.example.com",
