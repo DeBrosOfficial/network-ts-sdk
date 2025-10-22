@@ -22,15 +22,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: network-ts-sdk
 
       - name: Build SDK
         run: pnpm build
-        working-directory: network-ts-sdk
 
       - name: Publish to npm
         run: npm publish --access public
-        working-directory: network-ts-sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -52,14 +49,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: network-ts-sdk
 
       - name: Build SDK
         run: pnpm build
-        working-directory: network-ts-sdk
 
       - name: Publish to GitHub Packages
         run: npm publish
-        working-directory: network-ts-sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
