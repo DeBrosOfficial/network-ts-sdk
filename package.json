@@ -1,10 +1,16 @@
 {
   "name": "@network/network-ts-sdk",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "TypeScript SDK for DeBros Network Gateway",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "author": "DeBrosOfficial",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DeBrosOfficial/network-ts-sdk/tree/v0.0.1"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
