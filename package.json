@@ -1,6 +1,6 @@
 {
-  "name": "@network/network-ts-sdk",
-  "version": "0.0.2",
+  "name": "network-ts-sdk",
+  "version": "0.1.0",
   "description": "TypeScript SDK for DeBros Network Gateway",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,7 +27,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
     "test": "vitest",
-    "test:e2e": "vitest run tests/e2e"
+    "test:e2e": "vitest run tests/e2e",
+    "release:npm": "npm publish --access public --registry=https://registry.npmjs.org/",
+    "release:gh": "npm publish --registry=https://npm.pkg.github.com"
   },
   "dependencies": {
     "isomorphic-ws": "^5.0.0"
