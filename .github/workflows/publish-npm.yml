@@ -3,7 +3,7 @@ name: Publish SDK to npm
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags (e.g., v0.1.0, v0.2.1)
+      - 'v*' 
 
 jobs:
   publish-npm:
