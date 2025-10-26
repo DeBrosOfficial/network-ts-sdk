@@ -18,8 +18,8 @@ describe("Network", () => {
     const client = await createTestClient();
     const status = await client.network.status();
     expect(status).toBeDefined();
-    expect(typeof status.healthy).toBe("boolean");
-    expect(typeof status.peers).toBe("number");
+    expect(typeof status.connected).toBe("boolean");
+    expect(typeof status.peer_count).toBe("number");
   });
 
   it("should list peers", async () => {

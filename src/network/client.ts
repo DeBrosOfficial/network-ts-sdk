@@ -7,9 +7,11 @@ export interface PeerInfo {
 }
 
 export interface NetworkStatus {
-  healthy: boolean;
-  peers: number;
-  uptime?: number;
+  node_id: string;
+  connected: boolean;
+  peer_count: number;
+  database_size: number;
+  uptime: number;
 }
 
 export class NetworkClient {
@@ -35,7 +37,7 @@ export class NetworkClient {
    * Get network status.
    */
   async status(): Promise<NetworkStatus> {
-    const response = await this.httpClient.get<NetworkStatus>("/v1/status");
+    const response = await this.httpClient.get<NetworkStatus>("/v1/network/status");
     return response;
   }
 
