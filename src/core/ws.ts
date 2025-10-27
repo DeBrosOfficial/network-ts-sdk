@@ -56,7 +56,9 @@ export class WSClient {
 
         const timeout = setTimeout(() => {
           this.ws?.close();
-          reject(new SDKError("WebSocket connection timeout", 408, "WS_TIMEOUT"));
+          reject(
+            new SDKError("WebSocket connection timeout", 408, "WS_TIMEOUT")
+          );
         }, this.timeout);
 
         this.ws.addEventListener("open", () => {
@@ -72,13 +74,9 @@ export class WSClient {
         });
 
         this.ws.addEventListener("error", (event: Event) => {
+          console.error("[WSClient] WebSocket error:", event);
           clearTimeout(timeout);
-          const error = new SDKError(
-            "WebSocket error",
-            500,
-            "WS_ERROR",
-            event
-          );
+          const error = new SDKError("WebSocket error", 500, "WS_ERROR", event);
           this.errorHandlers.forEach((handler) => handler(error));
         });
 
@@ -99,7 +97,7 @@ export class WSClient {
 
   private buildWSUrl(): string {
     let url = this.url;
-    
+
     // Always append auth token as query parameter for compatibility
     // Works in both Node.js and browser environments
     if (this.authToken) {
@@ -107,7 +105,7 @@ export class WSClient {
       const paramName = this.authToken.startsWith("ak_") ? "api_key" : "token";
       url += `${separator}${paramName}=${encodeURIComponent(this.authToken)}`;
     }
-    
+
     return url;
   }
 
@@ -157,11 +155,7 @@ export class WSClient {
 
   send(data: string) {
     if (this.ws?.readyState !== WebSocket.OPEN) {
-      throw new SDKError(
-        "WebSocket is not connected",
-        500,
-        "WS_NOT_CONNECTED"
-      );
+      throw new SDKError("WebSocket is not connected", 500, "WS_NOT_CONNECTED");
     }
     this.ws.send(data);
   }
