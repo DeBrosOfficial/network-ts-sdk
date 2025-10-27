@@ -122,10 +122,23 @@ const results = await client.db.transaction([
 
 ### Pub/Sub Messaging
 
+The SDK provides a robust pub/sub client with:
+
+- **Multi-subscriber support**: Multiple connections can subscribe to the same topic
+- **Namespace isolation**: Topics are scoped to your authenticated namespace
+- **Server timestamps**: Messages preserve server-side timestamps
+- **Binary-safe**: Supports both string and binary (`Uint8Array`) payloads
+- **Strict envelope validation**: Type-safe message parsing with error handling
+
 #### Publish a Message
 
 ```typescript
+// Publish a string message
 await client.pubsub.publish("notifications", "Hello, Network!");
+
+// Publish binary data
+const binaryData = new Uint8Array([1, 2, 3, 4]);
+await client.pubsub.publish("binary-topic", binaryData);
 ```
 
 #### Subscribe to Topics
@@ -133,7 +146,9 @@ await client.pubsub.publish("notifications", "Hello, Network!");
 ```typescript
 const subscription = await client.pubsub.subscribe("notifications", {
   onMessage: (msg) => {
-    console.log("Received:", msg.data);
+    console.log("Topic:", msg.topic);
+    console.log("Data:", msg.data);
+    console.log("Server timestamp:", new Date(msg.timestamp));
   },
   onError: (err) => {
     console.error("Subscription error:", err);
@@ -145,6 +160,52 @@ const subscription = await client.pubsub.subscribe("notifications", {
 
 // Later, close the subscription
 subscription.close();
+```
+
+**Message Interface:**
+
+```typescript
+interface Message {
+  data: string; // Decoded message payload (string)
+  topic: string; // Topic name
+  timestamp: number; // Server timestamp in milliseconds
+}
+```
+
+#### Debug Raw Envelopes
+
+For debugging, you can inspect raw message envelopes before decoding:
+
+```typescript
+const subscription = await client.pubsub.subscribe("notifications", {
+  onMessage: (msg) => {
+    console.log("Decoded message:", msg.data);
+  },
+  onRaw: (envelope) => {
+    console.log("Raw envelope:", envelope);
+    // { data: "base64...", timestamp: 1234567890, topic: "notifications" }
+  },
+});
+```
+
+#### Multi-Subscriber Support
+
+Multiple subscriptions to the same topic are supported. Each receives its own copy of messages:
+
+```typescript
+// First subscriber
+const sub1 = await client.pubsub.subscribe("events", {
+  onMessage: (msg) => console.log("Sub1:", msg.data),
+});
+
+// Second subscriber (both receive messages)
+const sub2 = await client.pubsub.subscribe("events", {
+  onMessage: (msg) => console.log("Sub2:", msg.data),
+});
+
+// Unsubscribe independently
+sub1.close(); // sub2 still active
+sub2.close(); // fully unsubscribed
 ```
 
 #### List Topics

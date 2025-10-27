@@ -56,6 +56,7 @@ export class HttpClient {
       body?: any;
       headers?: Record<string, string>;
       query?: Record<string, string | number | boolean>;
+      timeout?: number; // Per-request timeout override
     } = {}
   ): Promise<T> {
     const url = new URL(this.baseURL + path);
@@ -71,17 +72,25 @@ export class HttpClient {
       ...options.headers,
     };
 
+    const controller = new AbortController();
+    const requestTimeout = options.timeout ?? this.timeout; // Use override or default
+    const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
+
     const fetchOptions: RequestInit = {
       method,
       headers,
-      signal: AbortSignal.timeout(this.timeout),
+      signal: controller.signal,
     };
 
     if (options.body !== undefined) {
       fetchOptions.body = JSON.stringify(options.body);
     }
 
-    return this.requestWithRetry(url.toString(), fetchOptions);
+    try {
+      return await this.requestWithRetry(url.toString(), fetchOptions);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   private async requestWithRetry(
