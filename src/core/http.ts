@@ -27,20 +27,53 @@ export class HttpClient {
 
   setApiKey(apiKey?: string) {
     this.apiKey = apiKey;
-    this.jwt = undefined;
+    // Don't clear JWT - allow both to coexist
+    if (typeof console !== "undefined") {
+      console.log(
+        "[HttpClient] API key set:",
+        !!apiKey,
+        "JWT still present:",
+        !!this.jwt
+      );
+    }
   }
 
   setJwt(jwt?: string) {
     this.jwt = jwt;
-    this.apiKey = undefined;
+    // Don't clear API key - allow both to coexist
+    if (typeof console !== "undefined") {
+      console.log(
+        "[HttpClient] JWT set:",
+        !!jwt,
+        "API key still present:",
+        !!this.apiKey
+      );
+    }
   }
 
-  private getAuthHeaders(): Record<string, string> {
+  private getAuthHeaders(path: string): Record<string, string> {
     const headers: Record<string, string> = {};
-    if (this.jwt) {
-      headers["Authorization"] = `Bearer ${this.jwt}`;
-    } else if (this.apiKey) {
-      headers["X-API-Key"] = this.apiKey;
+
+    // For database operations, ONLY use API key to avoid JWT user context
+    // interfering with namespace-level authorization
+    const isDbOperation = path.includes("/v1/rqlite/");
+
+    if (isDbOperation) {
+      // For database operations: use only API key (preferred for namespace operations)
+      if (this.apiKey) {
+        headers["X-API-Key"] = this.apiKey;
+      } else if (this.jwt) {
+        // Fallback to JWT if no API key
+        headers["Authorization"] = `Bearer ${this.jwt}`;
+      }
+    } else {
+      // For auth/other operations: send both JWT and API key
+      if (this.jwt) {
+        headers["Authorization"] = `Bearer ${this.jwt}`;
+      }
+      if (this.apiKey) {
+        headers["X-API-Key"] = this.apiKey;
+      }
     }
     return headers;
   }
@@ -68,9 +101,28 @@ export class HttpClient {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...this.getAuthHeaders(),
+      ...this.getAuthHeaders(path),
       ...options.headers,
     };
+
+    // Debug: Log headers being sent
+    if (
+      typeof console !== "undefined" &&
+      (path.includes("/db/") ||
+        path.includes("/query") ||
+        path.includes("/auth/"))
+    ) {
+      console.log("[HttpClient] Request headers for", path, {
+        hasAuth: !!headers["Authorization"],
+        hasApiKey: !!headers["X-API-Key"],
+        authPrefix: headers["Authorization"]
+          ? headers["Authorization"].substring(0, 20)
+          : "none",
+        apiKeyPrefix: headers["X-API-Key"]
+          ? headers["X-API-Key"].substring(0, 20)
+          : "none",
+      });
+    }
 
     const controller = new AbortController();
     const requestTimeout = options.timeout ?? this.timeout; // Use override or default

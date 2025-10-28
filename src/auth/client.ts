@@ -28,14 +28,14 @@ export class AuthClient {
 
   setApiKey(apiKey: string) {
     this.currentApiKey = apiKey;
-    this.currentJwt = undefined;
+    // Don't clear JWT - it will be cleared explicitly on logout
     this.httpClient.setApiKey(apiKey);
     this.storage.set("apiKey", apiKey);
   }
 
   setJwt(jwt: string) {
     this.currentJwt = jwt;
-    this.currentApiKey = undefined;
+    // Don't clear API key - keep it as fallback for after logout
     this.httpClient.setJwt(jwt);
     this.storage.set("jwt", jwt);
   }
@@ -62,6 +62,51 @@ export class AuthClient {
     return token;
   }
 
+  /**
+   * Logout user and clear JWT, but preserve API key
+   * Use this for user logout in apps where API key is app-level credential
+   */
+  async logoutUser(): Promise<void> {
+    // Attempt server-side logout if using JWT
+    if (this.currentJwt) {
+      try {
+        await this.httpClient.post("/v1/auth/logout", { all: true });
+      } catch (error) {
+        // Log warning but don't fail - local cleanup is more important
+        console.warn(
+          "Server-side logout failed, continuing with local cleanup:",
+          error
+        );
+      }
+    }
+
+    // Clear JWT only, preserve API key
+    this.currentJwt = undefined;
+    this.httpClient.setJwt(undefined);
+    await this.storage.set("jwt", ""); // Clear JWT from storage
+
+    // Ensure API key is loaded and set as active auth method
+    if (!this.currentApiKey) {
+      // Try to load from storage
+      const storedApiKey = await this.storage.get("apiKey");
+      if (storedApiKey) {
+        this.currentApiKey = storedApiKey;
+      }
+    }
+
+    // Restore API key as the active auth method
+    if (this.currentApiKey) {
+      this.httpClient.setApiKey(this.currentApiKey);
+      console.log("[Auth] API key restored after user logout");
+    } else {
+      console.warn("[Auth] No API key available after logout");
+    }
+  }
+
+  /**
+   * Full logout - clears both JWT and API key
+   * Use this to completely reset authentication state
+   */
   async logout(): Promise<void> {
     // Only attempt server-side logout if using JWT
     // API keys don't support server-side logout with all=true
