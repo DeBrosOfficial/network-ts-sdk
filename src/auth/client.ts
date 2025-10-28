@@ -167,6 +167,7 @@ export class AuthClient {
     nonce: string;
     signature: string;
     namespace?: string;
+    chain_type?: "ETH" | "SOL";
   }): Promise<{
     access_token: string;
     refresh_token: string;
@@ -178,6 +179,7 @@ export class AuthClient {
       nonce: params.nonce,
       signature: params.signature,
       namespace: params.namespace || "default",
+      chain_type: params.chain_type || "ETH",
     });
 
     // Automatically set the JWT
@@ -194,6 +196,7 @@ export class AuthClient {
     nonce: string;
     signature: string;
     namespace?: string;
+    chain_type?: "ETH" | "SOL";
   }): Promise<{
     api_key: string;
     namespace: string;
@@ -204,6 +207,7 @@ export class AuthClient {
       nonce: params.nonce,
       signature: params.signature,
       namespace: params.namespace || "default",
+      chain_type: params.chain_type || "ETH",
     });
 
     // Automatically set the API key
