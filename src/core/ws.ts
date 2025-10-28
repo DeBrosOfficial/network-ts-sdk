@@ -4,10 +4,6 @@ import { SDKError } from "../errors";
 export interface WSClientConfig {
   wsURL: string;
   timeout?: number;
-  maxReconnectAttempts?: number;
-  reconnectDelayMs?: number;
-  heartbeatIntervalMs?: number;
-  authMode?: "header" | "query";
   authToken?: string;
   WebSocket?: typeof WebSocket;
 }
@@ -15,44 +11,41 @@ export interface WSClientConfig {
 export type WSMessageHandler = (data: string) => void;
 export type WSErrorHandler = (error: Error) => void;
 export type WSCloseHandler = () => void;
+export type WSOpenHandler = () => void;
 
+/**
+ * Simple WebSocket client with minimal abstractions
+ * No complex reconnection, no heartbeats - keep it simple
+ */
 export class WSClient {
   private url: string;
   private timeout: number;
-  private maxReconnectAttempts: number;
-  private reconnectDelayMs: number;
-  private heartbeatIntervalMs: number;
-  private authMode: "header" | "query";
   private authToken?: string;
   private WebSocketClass: typeof WebSocket;
 
   private ws?: WebSocket;
-  private reconnectAttempts = 0;
-  private heartbeatInterval?: NodeJS.Timeout;
   private messageHandlers: Set<WSMessageHandler> = new Set();
   private errorHandlers: Set<WSErrorHandler> = new Set();
   private closeHandlers: Set<WSCloseHandler> = new Set();
-  private isManuallyClosed = false;
+  private openHandlers: Set<WSOpenHandler> = new Set();
+  private isClosed = false;
 
   constructor(config: WSClientConfig) {
     this.url = config.wsURL;
     this.timeout = config.timeout ?? 30000;
-    this.maxReconnectAttempts = config.maxReconnectAttempts ?? 5;
-    this.reconnectDelayMs = config.reconnectDelayMs ?? 1000;
-    this.heartbeatIntervalMs = config.heartbeatIntervalMs ?? 30000;
-    this.authMode = config.authMode ?? "header";
     this.authToken = config.authToken;
     this.WebSocketClass = config.WebSocket ?? WebSocket;
   }
 
+  /**
+   * Connect to WebSocket server
+   */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         const wsUrl = this.buildWSUrl();
         this.ws = new this.WebSocketClass(wsUrl);
-
-        // Note: Custom headers via ws library in Node.js are not sent with WebSocket upgrade requests
-        // so we rely on query parameters for authentication
+        this.isClosed = false;
 
         const timeout = setTimeout(() => {
           this.ws?.close();
@@ -63,8 +56,8 @@ export class WSClient {
 
         this.ws.addEventListener("open", () => {
           clearTimeout(timeout);
-          this.reconnectAttempts = 0;
-          this.startHeartbeat();
+          console.log("[WSClient] Connected to", this.url);
+          this.openHandlers.forEach((handler) => handler());
           resolve();
         });
 
@@ -82,12 +75,8 @@ export class WSClient {
 
         this.ws.addEventListener("close", () => {
           clearTimeout(timeout);
-          this.stopHeartbeat();
-          if (!this.isManuallyClosed) {
-            this.attemptReconnect();
-          } else {
-            this.closeHandlers.forEach((handler) => handler());
-          }
+          console.log("[WSClient] Connection closed");
+          this.closeHandlers.forEach((handler) => handler());
         });
       } catch (error) {
         reject(error);
@@ -95,11 +84,12 @@ export class WSClient {
     });
   }
 
+  /**
+   * Build WebSocket URL with auth token
+   */
   private buildWSUrl(): string {
     let url = this.url;
 
-    // Always append auth token as query parameter for compatibility
-    // Works in both Node.js and browser environments
     if (this.authToken) {
       const separator = url.includes("?") ? "&" : "?";
       const paramName = this.authToken.startsWith("ak_") ? "api_key" : "token";
@@ -109,68 +99,91 @@ export class WSClient {
     return url;
   }
 
-  private startHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "ping" }));
-      }
-    }, this.heartbeatIntervalMs);
-  }
-
-  private stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = undefined;
-    }
-  }
-
-  private attemptReconnect() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      const delayMs = this.reconnectDelayMs * this.reconnectAttempts;
-      setTimeout(() => {
-        this.connect().catch((error) => {
-          this.errorHandlers.forEach((handler) => handler(error));
-        });
-      }, delayMs);
-    } else {
-      this.closeHandlers.forEach((handler) => handler());
-    }
-  }
-
-  onMessage(handler: WSMessageHandler) {
+  /**
+   * Register message handler
+   */
+  onMessage(handler: WSMessageHandler): () => void {
     this.messageHandlers.add(handler);
     return () => this.messageHandlers.delete(handler);
   }
 
-  onError(handler: WSErrorHandler) {
+  /**
+   * Unregister message handler
+   */
+  offMessage(handler: WSMessageHandler): void {
+    this.messageHandlers.delete(handler);
+  }
+
+  /**
+   * Register error handler
+   */
+  onError(handler: WSErrorHandler): () => void {
     this.errorHandlers.add(handler);
     return () => this.errorHandlers.delete(handler);
   }
 
-  onClose(handler: WSCloseHandler) {
+  /**
+   * Unregister error handler
+   */
+  offError(handler: WSErrorHandler): void {
+    this.errorHandlers.delete(handler);
+  }
+
+  /**
+   * Register close handler
+   */
+  onClose(handler: WSCloseHandler): () => void {
     this.closeHandlers.add(handler);
     return () => this.closeHandlers.delete(handler);
   }
 
-  send(data: string) {
+  /**
+   * Unregister close handler
+   */
+  offClose(handler: WSCloseHandler): void {
+    this.closeHandlers.delete(handler);
+  }
+
+  /**
+   * Register open handler
+   */
+  onOpen(handler: WSOpenHandler): () => void {
+    this.openHandlers.add(handler);
+    return () => this.openHandlers.delete(handler);
+  }
+
+  /**
+   * Send data through WebSocket
+   */
+  send(data: string): void {
     if (this.ws?.readyState !== WebSocket.OPEN) {
       throw new SDKError("WebSocket is not connected", 500, "WS_NOT_CONNECTED");
     }
     this.ws.send(data);
   }
 
-  close() {
-    this.isManuallyClosed = true;
-    this.stopHeartbeat();
+  /**
+   * Close WebSocket connection
+   */
+  close(): void {
+    if (this.isClosed) {
+      return;
+    }
+    this.isClosed = true;
     this.ws?.close();
   }
 
+  /**
+   * Check if WebSocket is connected
+   */
   isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return !this.isClosed && this.ws?.readyState === WebSocket.OPEN;
   }
 
-  setAuthToken(token?: string) {
+  /**
+   * Update auth token
+   */
+  setAuthToken(token?: string): void {
     this.authToken = token;
   }
 }

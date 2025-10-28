@@ -19,7 +19,7 @@ export class HttpClient {
 
   constructor(config: HttpClientConfig) {
     this.baseURL = config.baseURL.replace(/\/$/, "");
-    this.timeout = config.timeout ?? 30000;
+    this.timeout = config.timeout ?? 60000; // Increased from 30s to 60s for pub/sub operations
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelayMs = config.retryDelayMs ?? 1000;
     this.fetch = config.fetch ?? globalThis.fetch;

@@ -16,10 +16,8 @@ export interface RawEnvelope {
 // Cross-platform base64 encoding/decoding utilities
 function base64Encode(str: string): string {
   if (typeof Buffer !== "undefined") {
-    // Node.js environment
     return Buffer.from(str).toString("base64");
   } else if (typeof btoa !== "undefined") {
-    // Browser/React Native environment
     return btoa(
       encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) =>
         String.fromCharCode(parseInt(p1, 16))
@@ -31,10 +29,8 @@ function base64Encode(str: string): string {
 
 function base64EncodeBytes(bytes: Uint8Array): string {
   if (typeof Buffer !== "undefined") {
-    // Node.js environment
     return Buffer.from(bytes).toString("base64");
   } else if (typeof btoa !== "undefined") {
-    // Browser/React Native environment
     let binary = "";
     for (let i = 0; i < bytes.length; i++) {
       binary += String.fromCharCode(bytes[i]);
@@ -46,10 +42,8 @@ function base64EncodeBytes(bytes: Uint8Array): string {
 
 function base64Decode(b64: string): string {
   if (typeof Buffer !== "undefined") {
-    // Node.js environment
     return Buffer.from(b64, "base64").toString("utf-8");
   } else if (typeof atob !== "undefined") {
-    // Browser/React Native environment
     const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
@@ -63,8 +57,11 @@ function base64Decode(b64: string): string {
 export type MessageHandler = (message: Message) => void;
 export type ErrorHandler = (error: Error) => void;
 export type CloseHandler = () => void;
-export type RawMessageHandler = (envelope: RawEnvelope) => void;
 
+/**
+ * Simple PubSub client - one WebSocket connection per topic
+ * No connection pooling, no reference counting - keep it simple
+ */
 export class PubSubClient {
   private httpClient: HttpClient;
   private wsConfig: Partial<WSClientConfig>;
@@ -75,23 +72,18 @@ export class PubSubClient {
   }
 
   /**
-   * Publish a message to a topic.
+   * Publish a message to a topic via HTTP
    */
   async publish(topic: string, data: string | Uint8Array): Promise<void> {
     let dataBase64: string;
     if (typeof data === "string") {
       dataBase64 = base64Encode(data);
     } else {
-      // Encode bytes directly to preserve binary data
       dataBase64 = base64EncodeBytes(data);
     }
 
-    console.log("[PubSubClient] Publishing message:", {
-      topic,
-      data: typeof data === "string" ? data : `<${data.length} bytes>`,
-    });
+    console.log("[PubSubClient] Publishing to topic:", topic);
 
-    // Use longer timeout for pub/sub operations (60s instead of default 30s)
     await this.httpClient.post(
       "/v1/pubsub/publish",
       {
@@ -99,13 +91,13 @@ export class PubSubClient {
         data_base64: dataBase64,
       },
       {
-        timeout: 60000, // 60 seconds
+        timeout: 30000,
       }
     );
   }
 
   /**
-   * List active topics in the current namespace.
+   * List active topics in the current namespace
    */
   async topics(): Promise<string[]> {
     const response = await this.httpClient.get<{ topics: string[] }>(
@@ -115,8 +107,8 @@ export class PubSubClient {
   }
 
   /**
-   * Subscribe to a topic via WebSocket.
-   * Returns a subscription object with event handlers.
+   * Subscribe to a topic via WebSocket
+   * Creates one WebSocket connection per topic
    */
   async subscribe(
     topic: string,
@@ -124,19 +116,24 @@ export class PubSubClient {
       onMessage?: MessageHandler;
       onError?: ErrorHandler;
       onClose?: CloseHandler;
-      onRaw?: RawMessageHandler;
     } = {}
   ): Promise<Subscription> {
+    // Build WebSocket URL for this topic
     const wsUrl = new URL(this.wsConfig.wsURL || "ws://localhost:6001");
     wsUrl.pathname = "/v1/pubsub/ws";
     wsUrl.searchParams.set("topic", topic);
 
+    // Create WebSocket client
     const wsClient = new WSClient({
       ...this.wsConfig,
       wsURL: wsUrl.toString(),
       authToken: this.httpClient.getToken(),
     });
 
+    console.log("[PubSubClient] Connecting to topic:", topic);
+    await wsClient.connect();
+
+    // Create subscription wrapper
     const subscription = new Subscription(wsClient, topic);
 
     if (handlers.onMessage) {
@@ -148,93 +145,61 @@ export class PubSubClient {
     if (handlers.onClose) {
       subscription.onClose(handlers.onClose);
     }
-    if (handlers.onRaw) {
-      subscription.onRaw(handlers.onRaw);
-    }
 
-    await wsClient.connect();
     return subscription;
   }
 }
 
+/**
+ * Subscription represents an active WebSocket subscription to a topic
+ */
 export class Subscription {
   private wsClient: WSClient;
   private topic: string;
   private messageHandlers: Set<MessageHandler> = new Set();
   private errorHandlers: Set<ErrorHandler> = new Set();
   private closeHandlers: Set<CloseHandler> = new Set();
-  private rawHandlers: Set<RawMessageHandler> = new Set();
+  private isClosed = false;
+  private wsMessageHandler: ((data: string) => void) | null = null;
+  private wsErrorHandler: ((error: Error) => void) | null = null;
+  private wsCloseHandler: (() => void) | null = null;
 
   constructor(wsClient: WSClient, topic: string) {
     this.wsClient = wsClient;
     this.topic = topic;
 
-    this.wsClient.onMessage((data) => {
+    // Register message handler
+    this.wsMessageHandler = (data) => {
       try {
         // Parse gateway JSON envelope: {data: base64String, timestamp, topic}
-        let envelope: RawEnvelope;
-        try {
-          envelope = JSON.parse(data);
+        const envelope: RawEnvelope = JSON.parse(data);
 
-          // Validate envelope structure
-          if (!envelope || typeof envelope !== "object") {
-            throw new Error("Invalid envelope: not an object");
-          }
-          if (!envelope.data || typeof envelope.data !== "string") {
-            throw new Error("Invalid envelope: missing or invalid data field");
-          }
-          if (!envelope.topic || typeof envelope.topic !== "string") {
-            throw new Error("Invalid envelope: missing or invalid topic field");
-          }
-          if (typeof envelope.timestamp !== "number") {
-            throw new Error(
-              "Invalid envelope: missing or invalid timestamp field"
-            );
-          }
-
-          // Validate topic matches subscription
-          if (envelope.topic !== this.topic) {
-            console.warn(
-              `[Subscription] Topic mismatch: expected ${this.topic}, got ${envelope.topic}`
-            );
-          }
-        } catch (parseError) {
-          console.error("[Subscription] Failed to parse envelope:", parseError);
-          this.errorHandlers.forEach((handler) =>
-            handler(
-              parseError instanceof Error
-                ? parseError
-                : new Error(String(parseError))
-            )
-          );
-          return;
+        // Validate envelope structure
+        if (!envelope || typeof envelope !== "object") {
+          throw new Error("Invalid envelope: not an object");
         }
-
-        // Call raw handlers for debugging
-        this.rawHandlers.forEach((handler) => handler(envelope));
+        if (!envelope.data || typeof envelope.data !== "string") {
+          throw new Error("Invalid envelope: missing or invalid data field");
+        }
+        if (!envelope.topic || typeof envelope.topic !== "string") {
+          throw new Error("Invalid envelope: missing or invalid topic field");
+        }
+        if (typeof envelope.timestamp !== "number") {
+          throw new Error(
+            "Invalid envelope: missing or invalid timestamp field"
+          );
+        }
 
         // Decode base64 data
-        let messageData: string;
-        try {
-          messageData = base64Decode(envelope.data);
-        } catch (decodeError) {
-          console.error("[Subscription] Base64 decode failed:", decodeError);
-          this.errorHandlers.forEach((handler) =>
-            handler(
-              decodeError instanceof Error
-                ? decodeError
-                : new Error(String(decodeError))
-            )
-          );
-          return;
-        }
+        const messageData = base64Decode(envelope.data);
 
         const message: Message = {
           topic: envelope.topic,
           data: messageData,
           timestamp: envelope.timestamp,
         };
-        console.log("[Subscription] Received message:", message);
+
+        console.log("[Subscription] Received message on topic:", this.topic);
         this.messageHandlers.forEach((handler) => handler(message));
       } catch (error) {
         console.error("[Subscription] Error processing message:", error);
@@ -242,42 +207,83 @@ export class Subscription {
           handler(error instanceof Error ? error : new Error(String(error)))
         );
       }
-    });
+    };
 
-    this.wsClient.onError((error) => {
+    this.wsClient.onMessage(this.wsMessageHandler);
+
+    // Register error handler
+    this.wsErrorHandler = (error) => {
       this.errorHandlers.forEach((handler) => handler(error));
-    });
+    };
+    this.wsClient.onError(this.wsErrorHandler);
 
-    this.wsClient.onClose(() => {
+    // Register close handler
+    this.wsCloseHandler = () => {
       this.closeHandlers.forEach((handler) => handler());
-    });
+    };
+    this.wsClient.onClose(this.wsCloseHandler);
   }
 
-  onMessage(handler: MessageHandler) {
+  /**
+   * Register message handler
+   */
+  onMessage(handler: MessageHandler): () => void {
     this.messageHandlers.add(handler);
     return () => this.messageHandlers.delete(handler);
   }
 
-  onError(handler: ErrorHandler) {
+  /**
+   * Register error handler
+   */
+  onError(handler: ErrorHandler): () => void {
     this.errorHandlers.add(handler);
     return () => this.errorHandlers.delete(handler);
   }
 
-  onClose(handler: CloseHandler) {
+  /**
+   * Register close handler
+   */
+  onClose(handler: CloseHandler): () => void {
     this.closeHandlers.add(handler);
     return () => this.closeHandlers.delete(handler);
   }
 
-  onRaw(handler: RawMessageHandler) {
-    this.rawHandlers.add(handler);
-    return () => this.rawHandlers.delete(handler);
-  }
+  /**
+   * Close subscription and underlying WebSocket
+   */
+  close(): void {
+    if (this.isClosed) {
+      return;
+    }
+    this.isClosed = true;
 
-  close() {
+    // Remove handlers from WSClient
+    if (this.wsMessageHandler) {
+      this.wsClient.offMessage(this.wsMessageHandler);
+      this.wsMessageHandler = null;
+    }
+    if (this.wsErrorHandler) {
+      this.wsClient.offError(this.wsErrorHandler);
+      this.wsErrorHandler = null;
+    }
+    if (this.wsCloseHandler) {
+      this.wsClient.offClose(this.wsCloseHandler);
+      this.wsCloseHandler = null;
+    }
+
+    // Clear all local handlers
+    this.messageHandlers.clear();
+    this.errorHandlers.clear();
+    this.closeHandlers.clear();
+
+    // Close WebSocket connection
     this.wsClient.close();
   }
 
+  /**
+   * Check if subscription is active
+   */
   isConnected(): boolean {
-    return this.wsClient.isConnected();
+    return !this.isClosed && this.wsClient.isConnected();
   }
 }
