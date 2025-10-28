@@ -1,10 +1,5 @@
 import { HttpClient } from "../core/http";
-import {
-  AuthConfig,
-  WhoAmI,
-  StorageAdapter,
-  MemoryStorage,
-} from "./types";
+import { AuthConfig, WhoAmI, StorageAdapter, MemoryStorage } from "./types";
 
 export class AuthClient {
   private httpClient: HttpClient;
@@ -75,10 +70,13 @@ export class AuthClient {
         await this.httpClient.post("/v1/auth/logout", { all: true });
       } catch (error) {
         // Log warning but don't fail - local cleanup is more important
-        console.warn('Server-side logout failed, continuing with local cleanup:', error);
+        console.warn(
+          "Server-side logout failed, continuing with local cleanup:",
+          error
+        );
       }
     }
-    
+
     // Always clear local state
     this.currentApiKey = undefined;
     this.currentJwt = undefined;
@@ -93,5 +91,79 @@ export class AuthClient {
     this.httpClient.setApiKey(undefined);
     this.httpClient.setJwt(undefined);
     await this.storage.clear();
+  }
+
+  /**
+   * Request a challenge nonce for wallet authentication
+   */
+  async challenge(params: {
+    wallet: string;
+    purpose?: string;
+    namespace?: string;
+  }): Promise<{
+    nonce: string;
+    wallet: string;
+    namespace: string;
+    expires_at: string;
+  }> {
+    const response = await this.httpClient.post("/v1/auth/challenge", {
+      wallet: params.wallet,
+      purpose: params.purpose || "authentication",
+      namespace: params.namespace || "default",
+    });
+    return response;
+  }
+
+  /**
+   * Verify wallet signature and get JWT token
+   */
+  async verify(params: {
+    wallet: string;
+    nonce: string;
+    signature: string;
+    namespace?: string;
+  }): Promise<{
+    access_token: string;
+    refresh_token: string;
+    subject: string;
+    namespace: string;
+  }> {
+    const response = await this.httpClient.post("/v1/auth/verify", {
+      wallet: params.wallet,
+      nonce: params.nonce,
+      signature: params.signature,
+      namespace: params.namespace || "default",
+    });
+
+    // Automatically set the JWT
+    this.setJwt(response.access_token);
+
+    return response;
+  }
+
+  /**
+   * Get API key for wallet (creates namespace ownership)
+   */
+  async getApiKey(params: {
+    wallet: string;
+    nonce: string;
+    signature: string;
+    namespace?: string;
+  }): Promise<{
+    api_key: string;
+    namespace: string;
+    wallet: string;
+  }> {
+    const response = await this.httpClient.post("/v1/auth/api-key", {
+      wallet: params.wallet,
+      nonce: params.nonce,
+      signature: params.signature,
+      namespace: params.namespace || "default",
+    });
+
+    // Automatically set the API key
+    this.setApiKey(response.api_key);
+
+    return response;
   }
 }
