@@ -82,6 +82,10 @@ export class HttpClient {
     return this.jwt || this.apiKey;
   }
 
+  getApiKey(): string | undefined {
+    return this.apiKey;
+  }
+
   async request<T = any>(
     method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
@@ -104,6 +108,10 @@ export class HttpClient {
       ...this.getAuthHeaders(path),
       ...options.headers,
     };
+
+    if (path.startsWith("/v1/pubsub/publish")) {
+      console.log("publish headers", headers);
+    }
 
     // Debug: Log headers being sent
     if (

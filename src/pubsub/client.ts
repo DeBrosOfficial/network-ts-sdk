@@ -119,18 +119,19 @@ export class PubSubClient {
     } = {}
   ): Promise<Subscription> {
     // Build WebSocket URL for this topic
-    const wsUrl = new URL(this.wsConfig.wsURL || "ws://localhost:6001");
+    const wsUrl = new URL(this.wsConfig.wsURL || "ws://127.0.0.1:6001");
     wsUrl.pathname = "/v1/pubsub/ws";
     wsUrl.searchParams.set("topic", topic);
+
+    const authToken = this.httpClient.getApiKey() ?? this.httpClient.getToken();
 
     // Create WebSocket client
     const wsClient = new WSClient({
       ...this.wsConfig,
       wsURL: wsUrl.toString(),
-      authToken: this.httpClient.getToken(),
+      authToken,
     });
 
-    console.log("[PubSubClient] Connecting to topic:", topic);
     await wsClient.connect();
 
     // Create subscription wrapper
