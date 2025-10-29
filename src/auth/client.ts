@@ -170,9 +170,12 @@ export class AuthClient {
     chain_type?: "ETH" | "SOL";
   }): Promise<{
     access_token: string;
-    refresh_token: string;
+    refresh_token?: string;
     subject: string;
     namespace: string;
+    api_key?: string;
+    expires_in?: number;
+    token_type?: string;
   }> {
     const response = await this.httpClient.post("/v1/auth/verify", {
       wallet: params.wallet,
@@ -182,10 +185,20 @@ export class AuthClient {
       chain_type: params.chain_type || "ETH",
     });
 
-    // Automatically set the JWT
+    // Persist JWT
     this.setJwt(response.access_token);
 
-    return response;
+    // Persist API key if server provided it (created in verifyHandler)
+    if ((response as any).api_key) {
+      this.setApiKey((response as any).api_key);
+    }
+
+    // Persist refresh token if present (optional, for silent renewal)
+    if ((response as any).refresh_token) {
+      await this.storage.set("refreshToken", (response as any).refresh_token);
+    }
+
+    return response as any;
   }
 
   /**

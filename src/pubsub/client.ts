@@ -82,8 +82,6 @@ export class PubSubClient {
       dataBase64 = base64EncodeBytes(data);
     }
 
-    console.log("[PubSubClient] Publishing to topic:", topic);
-
     await this.httpClient.post(
       "/v1/pubsub/publish",
       {
