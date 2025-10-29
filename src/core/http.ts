@@ -109,10 +109,6 @@ export class HttpClient {
       ...options.headers,
     };
 
-    if (path.startsWith("/v1/pubsub/publish")) {
-      console.log("publish headers", headers);
-    }
-
     // Debug: Log headers being sent
     if (
       typeof console !== "undefined" &&
