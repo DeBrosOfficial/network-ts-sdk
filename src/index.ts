@@ -4,7 +4,11 @@ import { DBClient } from "./db/client";
 import { PubSubClient } from "./pubsub/client";
 import { NetworkClient } from "./network/client";
 import { WSClientConfig } from "./core/ws";
-import { StorageAdapter, MemoryStorage, LocalStorageAdapter } from "./auth/types";
+import {
+  StorageAdapter,
+  MemoryStorage,
+  LocalStorageAdapter,
+} from "./auth/types";
 
 export interface ClientConfig extends Omit<HttpClientConfig, "fetch"> {
   apiKey?: string;
@@ -38,8 +42,9 @@ export function createClient(config: ClientConfig): Client {
   });
 
   // Derive WebSocket URL from baseURL if not explicitly provided
-  const wsURL = config.wsConfig?.wsURL ?? 
-    config.baseURL.replace(/^http/, 'ws').replace(/\/$/, '');
+  const wsURL =
+    config.wsConfig?.wsURL ??
+    config.baseURL.replace(/^http/, "ws").replace(/\/$/, "");
 
   const db = new DBClient(httpClient);
   const pubsub = new PubSubClient(httpClient, {
@@ -67,11 +72,7 @@ export { PubSubClient, Subscription } from "./pubsub/client";
 export { NetworkClient } from "./network/client";
 export { SDKError } from "./errors";
 export { MemoryStorage, LocalStorageAdapter } from "./auth/types";
-export type {
-  StorageAdapter,
-  AuthConfig,
-  WhoAmI,
-} from "./auth/types";
+export type { StorageAdapter, AuthConfig, WhoAmI } from "./auth/types";
 export type * from "./db/types";
 export type {
   Message,
@@ -79,4 +80,9 @@ export type {
   ErrorHandler,
   CloseHandler,
 } from "./pubsub/client";
-export type { PeerInfo, NetworkStatus } from "./network/client";
+export type {
+  PeerInfo,
+  NetworkStatus,
+  ProxyRequest,
+  ProxyResponse,
+} from "./network/client";

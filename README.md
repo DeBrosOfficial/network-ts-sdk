@@ -272,6 +272,40 @@ peers.forEach((peer) => {
 });
 ```
 
+#### Proxy Requests Through Anyone Network
+
+Make anonymous HTTP requests through the Anyone network:
+
+```typescript
+// Simple GET request
+const response = await client.network.proxyAnon({
+  url: "https://api.example.com/data",
+  method: "GET",
+  headers: {
+    Accept: "application/json",
+  },
+});
+
+console.log(response.status_code); // 200
+console.log(response.body); // Response data as string
+console.log(response.headers); // Response headers
+
+// POST request with body
+const postResponse = await client.network.proxyAnon({
+  url: "https://api.example.com/submit",
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ key: "value" }),
+});
+
+// Parse JSON response
+const data = JSON.parse(postResponse.body);
+```
+
+**Note:** The proxy endpoint requires authentication (API key or JWT) and only works when the Anyone relay is running on the gateway server.
+
 ## Configuration
 
 ### ClientConfig

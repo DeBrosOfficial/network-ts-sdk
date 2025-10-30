@@ -27,4 +27,34 @@ describe("Network", () => {
     const peers = await client.network.peers();
     expect(Array.isArray(peers)).toBe(true);
   });
+
+  it("should proxy request through Anyone network", async () => {
+    const client = await createTestClient();
+
+    // Test with a simple GET request
+    const response = await client.network.proxyAnon({
+      url: "https://httpbin.org/get",
+      method: "GET",
+      headers: {
+        "User-Agent": "DeBros-SDK-Test/1.0",
+      },
+    });
+
+    expect(response).toBeDefined();
+    expect(response.status_code).toBe(200);
+    expect(response.body).toBeDefined();
+    expect(typeof response.body).toBe("string");
+  });
+
+  it("should handle proxy errors gracefully", async () => {
+    const client = await createTestClient();
+
+    // Test with invalid URL
+    await expect(
+      client.network.proxyAnon({
+        url: "http://localhost:1/invalid",
+        method: "GET",
+      })
+    ).rejects.toThrow();
+  });
 });

@@ -14,6 +14,20 @@ export interface NetworkStatus {
   uptime: number;
 }
 
+export interface ProxyRequest {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface ProxyResponse {
+  status_code: number;
+  headers: Record<string, string>;
+  body: string;
+  error?: string;
+}
+
 export class NetworkClient {
   private httpClient: HttpClient;
 
@@ -37,7 +51,9 @@ export class NetworkClient {
    * Get network status.
    */
   async status(): Promise<NetworkStatus> {
-    const response = await this.httpClient.get<NetworkStatus>("/v1/network/status");
+    const response = await this.httpClient.get<NetworkStatus>(
+      "/v1/network/status"
+    );
     return response;
   }
 
@@ -63,5 +79,41 @@ export class NetworkClient {
    */
   async disconnect(peerId: string): Promise<void> {
     await this.httpClient.post("/v1/network/disconnect", { peer_id: peerId });
+  }
+
+  /**
+   * Proxy an HTTP request through the Anyone network.
+   * Requires authentication (API key or JWT).
+   *
+   * @param request - The proxy request configuration
+   * @returns The proxied response
+   * @throws {SDKError} If the Anyone proxy is not available or the request fails
+   *
+   * @example
+   * ```ts
+   * const response = await client.network.proxyAnon({
+   *   url: 'https://api.example.com/data',
+   *   method: 'GET',
+   *   headers: {
+   *     'Accept': 'application/json'
+   *   }
+   * });
+   *
+   * console.log(response.status_code); // 200
+   * console.log(response.body); // Response data
+   * ```
+   */
+  async proxyAnon(request: ProxyRequest): Promise<ProxyResponse> {
+    const response = await this.httpClient.post<ProxyResponse>(
+      "/v1/proxy/anon",
+      request
+    );
+
+    // Check if the response contains an error
+    if (response.error) {
+      throw new Error(`Proxy request failed: ${response.error}`);
+    }
+
+    return response;
   }
 }
