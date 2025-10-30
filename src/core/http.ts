@@ -54,13 +54,14 @@ export class HttpClient {
   private getAuthHeaders(path: string): Record<string, string> {
     const headers: Record<string, string> = {};
 
-    // For database and pubsub operations, ONLY use API key to avoid JWT user context
+    // For database, pubsub, and proxy operations, ONLY use API key to avoid JWT user context
     // interfering with namespace-level authorization
     const isDbOperation = path.includes("/v1/rqlite/");
     const isPubSubOperation = path.includes("/v1/pubsub/");
+    const isProxyOperation = path.includes("/v1/proxy/");
 
-    if (isDbOperation || isPubSubOperation) {
-      // For database/pubsub operations: use only API key (preferred for namespace operations)
+    if (isDbOperation || isPubSubOperation || isProxyOperation) {
+      // For database/pubsub/proxy operations: use only API key (preferred for namespace operations)
       if (this.apiKey) {
         headers["X-API-Key"] = this.apiKey;
       } else if (this.jwt) {
@@ -116,7 +117,8 @@ export class HttpClient {
       (path.includes("/db/") ||
         path.includes("/query") ||
         path.includes("/auth/") ||
-        path.includes("/pubsub/"))
+        path.includes("/pubsub/") ||
+        path.includes("/proxy/"))
     ) {
       console.log("[HttpClient] Request headers for", path, {
         hasAuth: !!headers["Authorization"],
