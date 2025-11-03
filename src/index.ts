@@ -3,6 +3,7 @@ import { AuthClient } from "./auth/client";
 import { DBClient } from "./db/client";
 import { PubSubClient } from "./pubsub/client";
 import { NetworkClient } from "./network/client";
+import { CacheClient } from "./cache/client";
 import { WSClientConfig } from "./core/ws";
 import {
   StorageAdapter,
@@ -23,6 +24,7 @@ export interface Client {
   db: DBClient;
   pubsub: PubSubClient;
   network: NetworkClient;
+  cache: CacheClient;
 }
 
 export function createClient(config: ClientConfig): Client {
@@ -52,16 +54,17 @@ export function createClient(config: ClientConfig): Client {
     wsURL,
   });
   const network = new NetworkClient(httpClient);
+  const cache = new CacheClient(httpClient);
 
   return {
     auth,
     db,
     pubsub,
     network,
+    cache,
   };
 }
 
-// Re-exports
 export { HttpClient } from "./core/http";
 export { WSClient } from "./core/ws";
 export { AuthClient } from "./auth/client";
@@ -70,6 +73,7 @@ export { QueryBuilder } from "./db/qb";
 export { Repository } from "./db/repository";
 export { PubSubClient, Subscription } from "./pubsub/client";
 export { NetworkClient } from "./network/client";
+export { CacheClient } from "./cache/client";
 export { SDKError } from "./errors";
 export { MemoryStorage, LocalStorageAdapter } from "./auth/types";
 export type { StorageAdapter, AuthConfig, WhoAmI } from "./auth/types";
@@ -86,3 +90,14 @@ export type {
   ProxyRequest,
   ProxyResponse,
 } from "./network/client";
+export type {
+  CacheGetRequest,
+  CacheGetResponse,
+  CachePutRequest,
+  CachePutResponse,
+  CacheDeleteRequest,
+  CacheDeleteResponse,
+  CacheScanRequest,
+  CacheScanResponse,
+  CacheHealthResponse,
+} from "./cache/client";
