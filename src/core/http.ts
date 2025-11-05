@@ -221,6 +221,78 @@ export class HttpClient {
     return this.request<T>("DELETE", path, options);
   }
 
+  /**
+   * Upload a file using multipart/form-data
+   * This is a special method for file uploads that bypasses JSON serialization
+   */
+  async uploadFile<T = any>(
+    path: string,
+    formData: FormData,
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<T> {
+    const url = new URL(this.baseURL + path);
+    const headers: Record<string, string> = {
+      ...this.getAuthHeaders(path),
+      // Don't set Content-Type - browser will set it with boundary
+    };
+
+    const controller = new AbortController();
+    const requestTimeout = options?.timeout ?? this.timeout * 5; // 5x timeout for uploads
+    const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
+
+    const fetchOptions: RequestInit = {
+      method: "POST",
+      headers,
+      body: formData,
+      signal: controller.signal,
+    };
+
+    try {
+      return await this.requestWithRetry(url.toString(), fetchOptions);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Get a binary response (returns Response object for streaming)
+   */
+  async getBinary(path: string): Promise<Response> {
+    const url = new URL(this.baseURL + path);
+    const headers: Record<string, string> = {
+      ...this.getAuthHeaders(path),
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout * 5); // 5x timeout for downloads
+
+    const fetchOptions: RequestInit = {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+    };
+
+    try {
+      const response = await this.fetch(url.toString(), fetchOptions);
+      if (!response.ok) {
+        clearTimeout(timeoutId);
+        const error = await response.json().catch(() => ({
+          error: response.statusText,
+        }));
+        throw SDKError.fromResponse(response.status, error);
+      }
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof SDKError) {
+        throw error;
+      }
+      throw error;
+    }
+  }
+
   getToken(): string | undefined {
     return this.getAuthToken();
   }

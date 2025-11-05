@@ -4,6 +4,7 @@ import { DBClient } from "./db/client";
 import { PubSubClient } from "./pubsub/client";
 import { NetworkClient } from "./network/client";
 import { CacheClient } from "./cache/client";
+import { StorageClient } from "./storage/client";
 import { WSClientConfig } from "./core/ws";
 import {
   StorageAdapter,
@@ -25,6 +26,7 @@ export interface Client {
   pubsub: PubSubClient;
   network: NetworkClient;
   cache: CacheClient;
+  storage: StorageClient;
 }
 
 export function createClient(config: ClientConfig): Client {
@@ -55,6 +57,7 @@ export function createClient(config: ClientConfig): Client {
   });
   const network = new NetworkClient(httpClient);
   const cache = new CacheClient(httpClient);
+  const storage = new StorageClient(httpClient);
 
   return {
     auth,
@@ -62,6 +65,7 @@ export function createClient(config: ClientConfig): Client {
     pubsub,
     network,
     cache,
+    storage,
   };
 }
 
@@ -74,6 +78,7 @@ export { Repository } from "./db/repository";
 export { PubSubClient, Subscription } from "./pubsub/client";
 export { NetworkClient } from "./network/client";
 export { CacheClient } from "./cache/client";
+export { StorageClient } from "./storage/client";
 export { SDKError } from "./errors";
 export { MemoryStorage, LocalStorageAdapter } from "./auth/types";
 export type { StorageAdapter, AuthConfig, WhoAmI } from "./auth/types";
@@ -101,3 +106,9 @@ export type {
   CacheScanResponse,
   CacheHealthResponse,
 } from "./cache/client";
+export type {
+  StorageUploadResponse,
+  StoragePinRequest,
+  StoragePinResponse,
+  StorageStatus,
+} from "./storage/client";
