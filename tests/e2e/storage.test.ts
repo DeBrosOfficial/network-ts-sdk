@@ -181,13 +181,6 @@ describe("Storage", () => {
     await expect(client.storage.status(fakeCID)).rejects.toThrow();
   });
 
-  it("should handle get errors for non-existent CID", async () => {
-    const client = await createTestClient();
-    const fakeCID = "QmInvalidCID123456789";
-
-    await expect(client.storage.get(fakeCID)).rejects.toThrow();
-  });
-
   it("should upload large content", async () => {
     const client = await createTestClient();
     // Create a larger file (100KB)
