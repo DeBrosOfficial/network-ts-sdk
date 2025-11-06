@@ -98,7 +98,9 @@ export class Repository<T extends Record<string, any>> {
   private buildInsertSql(entity: T): string {
     const columns = Object.keys(entity).filter((k) => entity[k] !== undefined);
     const placeholders = columns.map(() => "?").join(", ");
-    return `INSERT INTO ${this.tableName} (${columns.join(", ")}) VALUES (${placeholders})`;
+    return `INSERT INTO ${this.tableName} (${columns.join(
+      ", "
+    )}) VALUES (${placeholders})`;
   }
 
   private buildInsertArgs(entity: T): any[] {
@@ -111,7 +113,9 @@ export class Repository<T extends Record<string, any>> {
     const columns = Object.keys(entity)
       .filter((k) => entity[k] !== undefined && k !== this.primaryKey)
       .map((k) => `${k} = ?`);
-    return `UPDATE ${this.tableName} SET ${columns.join(", ")} WHERE ${this.primaryKey} = ?`;
+    return `UPDATE ${this.tableName} SET ${columns.join(", ")} WHERE ${
+      this.primaryKey
+    } = ?`;
   }
 
   private buildUpdateArgs(entity: T): any[] {

@@ -28,14 +28,6 @@ export class HttpClient {
   setApiKey(apiKey?: string) {
     this.apiKey = apiKey;
     // Don't clear JWT - allow both to coexist
-    if (typeof console !== "undefined") {
-      console.log(
-        "[HttpClient] API key set:",
-        !!apiKey,
-        "JWT still present:",
-        !!this.jwt
-      );
-    }
   }
 
   setJwt(jwt?: string) {
@@ -54,22 +46,39 @@ export class HttpClient {
   private getAuthHeaders(path: string): Record<string, string> {
     const headers: Record<string, string> = {};
 
-    // For database, pubsub, and proxy operations, ONLY use API key to avoid JWT user context
+    // For database, pubsub, proxy, and cache operations, ONLY use API key to avoid JWT user context
     // interfering with namespace-level authorization
     const isDbOperation = path.includes("/v1/rqlite/");
     const isPubSubOperation = path.includes("/v1/pubsub/");
     const isProxyOperation = path.includes("/v1/proxy/");
+    const isCacheOperation = path.includes("/v1/cache/");
 
-    if (isDbOperation || isPubSubOperation || isProxyOperation) {
-      // For database/pubsub/proxy operations: use only API key (preferred for namespace operations)
+    // For auth operations, prefer API key over JWT to ensure proper authentication
+    const isAuthOperation = path.includes("/v1/auth/");
+
+    if (
+      isDbOperation ||
+      isPubSubOperation ||
+      isProxyOperation ||
+      isCacheOperation
+    ) {
+      // For database/pubsub/proxy/cache operations: use only API key (preferred for namespace operations)
       if (this.apiKey) {
         headers["X-API-Key"] = this.apiKey;
       } else if (this.jwt) {
         // Fallback to JWT if no API key
         headers["Authorization"] = `Bearer ${this.jwt}`;
       }
+    } else if (isAuthOperation) {
+      // For auth operations: prefer API key over JWT (auth endpoints should use explicit API key)
+      if (this.apiKey) {
+        headers["X-API-Key"] = this.apiKey;
+      }
+      if (this.jwt) {
+        headers["Authorization"] = `Bearer ${this.jwt}`;
+      }
     } else {
-      // For auth/other operations: send both JWT and API key
+      // For other operations: send both JWT and API key
       if (this.jwt) {
         headers["Authorization"] = `Bearer ${this.jwt}`;
       }
@@ -98,6 +107,7 @@ export class HttpClient {
       timeout?: number; // Per-request timeout override
     } = {}
   ): Promise<T> {
+    const startTime = performance.now(); // Track request start time
     const url = new URL(this.baseURL + path);
     if (options.query) {
       Object.entries(options.query).forEach(([key, value]) => {
@@ -110,27 +120,6 @@ export class HttpClient {
       ...this.getAuthHeaders(path),
       ...options.headers,
     };
-
-    // Debug: Log headers being sent
-    if (
-      typeof console !== "undefined" &&
-      (path.includes("/db/") ||
-        path.includes("/query") ||
-        path.includes("/auth/") ||
-        path.includes("/pubsub/") ||
-        path.includes("/proxy/"))
-    ) {
-      console.log("[HttpClient] Request headers for", path, {
-        hasAuth: !!headers["Authorization"],
-        hasApiKey: !!headers["X-API-Key"],
-        authPrefix: headers["Authorization"]
-          ? headers["Authorization"].substring(0, 20)
-          : "none",
-        apiKeyPrefix: headers["X-API-Key"]
-          ? headers["X-API-Key"].substring(0, 20)
-          : "none",
-      });
-    }
 
     const controller = new AbortController();
     const requestTimeout = options.timeout ?? this.timeout; // Use override or default
@@ -147,7 +136,60 @@ export class HttpClient {
     }
 
     try {
-      return await this.requestWithRetry(url.toString(), fetchOptions);
+      const result = await this.requestWithRetry(
+        url.toString(),
+        fetchOptions,
+        0,
+        startTime
+      );
+      const duration = performance.now() - startTime;
+      if (typeof console !== "undefined") {
+        console.log(
+          `[HttpClient] ${method} ${path} completed in ${duration.toFixed(2)}ms`
+        );
+      }
+      return result;
+    } catch (error) {
+      const duration = performance.now() - startTime;
+      if (typeof console !== "undefined") {
+        // Cache "key not found" (404) is expected behavior - don't log as error
+        const isCacheGetNotFound =
+          path === "/v1/cache/get" &&
+          error instanceof SDKError &&
+          error.httpStatus === 404;
+
+        // "Not found" (404) for blocked_users is expected behavior - don't log as error
+        // This happens when checking if users are blocked (most users aren't blocked)
+        const isBlockedUsersNotFound =
+          path === "/v1/rqlite/find-one" &&
+          error instanceof SDKError &&
+          error.httpStatus === 404 &&
+          options.body &&
+          (() => {
+            try {
+              const body =
+                typeof options.body === "string"
+                  ? JSON.parse(options.body)
+                  : options.body;
+              return body.table === "blocked_users";
+            } catch {
+              return false;
+            }
+          })();
+
+        if (isCacheGetNotFound || isBlockedUsersNotFound) {
+          // Log cache miss or non-blocked status as debug/info, not error
+          // These are expected behaviors
+        } else {
+          console.error(
+            `[HttpClient] ${method} ${path} failed after ${duration.toFixed(
+              2
+            )}ms:`,
+            error
+          );
+        }
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -156,7 +198,8 @@ export class HttpClient {
   private async requestWithRetry(
     url: string,
     options: RequestInit,
-    attempt: number = 0
+    attempt: number = 0,
+    startTime?: number // Track start time for timing across retries
   ): Promise<any> {
     try {
       const response = await this.fetch(url, options);
@@ -185,7 +228,7 @@ export class HttpClient {
         await new Promise((resolve) =>
           setTimeout(resolve, this.retryDelayMs * (attempt + 1))
         );
-        return this.requestWithRetry(url, options, attempt + 1);
+        return this.requestWithRetry(url, options, attempt + 1, startTime);
       }
       throw error;
     }
@@ -232,6 +275,7 @@ export class HttpClient {
       timeout?: number;
     }
   ): Promise<T> {
+    const startTime = performance.now(); // Track upload start time
     const url = new URL(this.baseURL + path);
     const headers: Record<string, string> = {
       ...this.getAuthHeaders(path),
@@ -250,7 +294,32 @@ export class HttpClient {
     };
 
     try {
-      return await this.requestWithRetry(url.toString(), fetchOptions);
+      const result = await this.requestWithRetry(
+        url.toString(),
+        fetchOptions,
+        0,
+        startTime
+      );
+      const duration = performance.now() - startTime;
+      if (typeof console !== "undefined") {
+        console.log(
+          `[HttpClient] POST ${path} (upload) completed in ${duration.toFixed(
+            2
+          )}ms`
+        );
+      }
+      return result;
+    } catch (error) {
+      const duration = performance.now() - startTime;
+      if (typeof console !== "undefined") {
+        console.error(
+          `[HttpClient] POST ${path} (upload) failed after ${duration.toFixed(
+            2
+          )}ms:`,
+          error
+        );
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutId);
     }
