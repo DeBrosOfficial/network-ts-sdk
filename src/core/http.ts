@@ -179,8 +179,31 @@ export class HttpClient {
             }
           })();
 
-        if (isCacheGetNotFound || isBlockedUsersNotFound) {
-          // Log cache miss or non-blocked status as debug/info, not error
+        // "Not found" (404) for conversation_participants is expected behavior - don't log as error
+        // This happens when checking if a user is a participant (e.g., on first group join)
+        const isConversationParticipantNotFound =
+          path === "/v1/rqlite/find-one" &&
+          error instanceof SDKError &&
+          error.httpStatus === 404 &&
+          options.body &&
+          (() => {
+            try {
+              const body =
+                typeof options.body === "string"
+                  ? JSON.parse(options.body)
+                  : options.body;
+              return body.table === "conversation_participants";
+            } catch {
+              return false;
+            }
+          })();
+
+        if (
+          isCacheGetNotFound ||
+          isBlockedUsersNotFound ||
+          isConversationParticipantNotFound
+        ) {
+          // Log cache miss, non-blocked status, or non-participant status as debug/info, not error
           // These are expected behaviors
         } else {
           console.error(
