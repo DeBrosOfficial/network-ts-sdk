@@ -1,4 +1,5 @@
 import { HttpClient } from "../core/http";
+import { SDKError } from "../errors";
 
 export interface CacheGetRequest {
   dmap: string;
@@ -67,12 +68,27 @@ export class CacheClient {
 
   /**
    * Get a value from cache
+   * Returns null if the key is not found (cache miss/expired), which is normal behavior
    */
-  async get(dmap: string, key: string): Promise<CacheGetResponse> {
-    return this.httpClient.post<CacheGetResponse>("/v1/cache/get", {
-      dmap,
-      key,
-    });
+  async get(dmap: string, key: string): Promise<CacheGetResponse | null> {
+    try {
+      return await this.httpClient.post<CacheGetResponse>("/v1/cache/get", {
+        dmap,
+        key,
+      });
+    } catch (error) {
+      // Cache misses (404 or "key not found" messages) are normal behavior - return null instead of throwing
+      if (
+        error instanceof SDKError &&
+        (error.httpStatus === 404 ||
+          (error.httpStatus === 500 &&
+            error.message?.toLowerCase().includes("key not found")))
+      ) {
+        return null;
+      }
+      // Re-throw other errors (network issues, server errors, etc.)
+      throw error;
+    }
   }
 
   /**

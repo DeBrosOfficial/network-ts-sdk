@@ -42,9 +42,10 @@ describe("Cache", () => {
 
     // Get value
     const getResult = await client.cache.get(testDMap, testKey);
-    expect(getResult.key).toBe(testKey);
-    expect(getResult.value).toBe(testValue);
-    expect(getResult.dmap).toBe(testDMap);
+    expect(getResult).not.toBeNull();
+    expect(getResult!.key).toBe(testKey);
+    expect(getResult!.value).toBe(testValue);
+    expect(getResult!.dmap).toBe(testDMap);
   });
 
   it("should put and get complex objects", async () => {
@@ -61,9 +62,10 @@ describe("Cache", () => {
 
     // Get object
     const getResult = await client.cache.get(testDMap, testKey);
-    expect(getResult.value).toBeDefined();
-    expect(getResult.value.name).toBe(testValue.name);
-    expect(getResult.value.age).toBe(testValue.age);
+    expect(getResult).not.toBeNull();
+    expect(getResult!.value).toBeDefined();
+    expect(getResult!.value.name).toBe(testValue.name);
+    expect(getResult!.value.age).toBe(testValue.age);
   });
 
   it("should put value with TTL", async () => {
@@ -82,7 +84,8 @@ describe("Cache", () => {
 
     // Verify value exists
     const getResult = await client.cache.get(testDMap, testKey);
-    expect(getResult.value).toBe(testValue);
+    expect(getResult).not.toBeNull();
+    expect(getResult!.value).toBe(testValue);
   });
 
   it("should delete a value", async () => {
@@ -95,20 +98,17 @@ describe("Cache", () => {
 
     // Verify it exists
     const before = await client.cache.get(testDMap, testKey);
-    expect(before.value).toBe(testValue);
+    expect(before).not.toBeNull();
+    expect(before!.value).toBe(testValue);
 
     // Delete value
     const deleteResult = await client.cache.delete(testDMap, testKey);
     expect(deleteResult.status).toBe("ok");
     expect(deleteResult.key).toBe(testKey);
 
-    // Verify it's deleted
-    try {
-      await client.cache.get(testDMap, testKey);
-      expect.fail("Expected get to fail after delete");
-    } catch (err: any) {
-      expect(err.message).toBeDefined();
-    }
+    // Verify it's deleted (should return null, not throw)
+    const after = await client.cache.get(testDMap, testKey);
+    expect(after).toBeNull();
   });
 
   it("should scan keys", async () => {
@@ -148,12 +148,9 @@ describe("Cache", () => {
     const client = await createTestClient();
     const nonExistentKey = "non-existent-key";
 
-    try {
-      await client.cache.get(testDMap, nonExistentKey);
-      expect.fail("Expected get to fail for non-existent key");
-    } catch (err: any) {
-      expect(err.message).toBeDefined();
-    }
+    // Cache misses should return null, not throw an error
+    const result = await client.cache.get(testDMap, nonExistentKey);
+    expect(result).toBeNull();
   });
 
   it("should handle empty dmap name", async () => {

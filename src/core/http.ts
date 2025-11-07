@@ -152,11 +152,13 @@ export class HttpClient {
     } catch (error) {
       const duration = performance.now() - startTime;
       if (typeof console !== "undefined") {
-        // Cache "key not found" (404) is expected behavior - don't log as error
+        // Cache "key not found" (404 or error message) is expected behavior - don't log as error
         const isCacheGetNotFound =
           path === "/v1/cache/get" &&
           error instanceof SDKError &&
-          error.httpStatus === 404;
+          (error.httpStatus === 404 ||
+            (error.httpStatus === 500 &&
+              error.message?.toLowerCase().includes("key not found")));
 
         // "Not found" (404) for blocked_users is expected behavior - don't log as error
         // This happens when checking if users are blocked (most users aren't blocked)
