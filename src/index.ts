@@ -102,6 +102,8 @@ export type {
   CachePutResponse,
   CacheDeleteRequest,
   CacheDeleteResponse,
+  CacheMultiGetRequest,
+  CacheMultiGetResponse,
   CacheScanRequest,
   CacheScanResponse,
   CacheHealthResponse,

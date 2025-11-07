@@ -36,6 +36,19 @@ export interface CacheDeleteResponse {
   dmap: string;
 }
 
+export interface CacheMultiGetRequest {
+  dmap: string;
+  keys: string[];
+}
+
+export interface CacheMultiGetResponse {
+  results: Array<{
+    key: string;
+    value: any;
+  }>;
+  dmap: string;
+}
+
 export interface CacheScanRequest {
   dmap: string;
   match?: string; // Optional regex pattern
@@ -116,6 +129,66 @@ export class CacheClient {
       dmap,
       key,
     });
+  }
+
+  /**
+   * Get multiple values from cache in a single request
+   * Returns a map of key -> value (or null if not found)
+   * Gracefully handles 404 errors (endpoint not implemented) by returning empty results
+   */
+  async multiGet(
+    dmap: string,
+    keys: string[]
+  ): Promise<Map<string, any | null>> {
+    try {
+      if (keys.length === 0) {
+        return new Map();
+      }
+
+      const response = await this.httpClient.post<CacheMultiGetResponse>(
+        "/v1/cache/mget",
+        {
+          dmap,
+          keys,
+        }
+      );
+
+      // Convert array to Map
+      const resultMap = new Map<string, any | null>();
+
+      // First, mark all keys as null (cache miss)
+      keys.forEach((key) => {
+        resultMap.set(key, null);
+      });
+
+      // Then, update with found values
+      if (response.results) {
+        response.results.forEach(({ key, value }) => {
+          resultMap.set(key, value);
+        });
+      }
+
+      return resultMap;
+    } catch (error) {
+      // Handle 404 errors silently (endpoint not implemented on backend)
+      // This is expected behavior when the backend doesn't support multiGet yet
+      if (error instanceof SDKError && error.httpStatus === 404) {
+        // Return map with all nulls silently - caller can fall back to individual gets
+        const resultMap = new Map<string, any | null>();
+        keys.forEach((key) => {
+          resultMap.set(key, null);
+        });
+        return resultMap;
+      }
+
+      // Log and return empty results for other errors
+      const resultMap = new Map<string, any | null>();
+      keys.forEach((key) => {
+        resultMap.set(key, null);
+      });
+      console.error(`[CacheClient] Error in multiGet for ${dmap}:`, error);
+      return resultMap;
+    }
   }
 
   /**
