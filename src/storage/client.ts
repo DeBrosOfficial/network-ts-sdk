@@ -35,11 +35,13 @@ export class StorageClient {
   }
 
   /**
-   * Upload content to IPFS and pin it.
+   * Upload content to IPFS and optionally pin it.
    * Supports both File objects (browser) and Buffer/ReadableStream (Node.js).
    *
    * @param file - File to upload (File, Blob, or Buffer)
    * @param name - Optional filename
+   * @param options - Optional upload options
+   * @param options.pin - Whether to pin the content (default: true). Pinning happens asynchronously on the backend.
    * @returns Upload result with CID
    *
    * @example
@@ -53,12 +55,15 @@ export class StorageClient {
    * // Node.js
    * const fs = require('fs');
    * const fileBuffer = fs.readFileSync('image.jpg');
-   * const result = await client.storage.upload(fileBuffer, 'image.jpg');
+   * const result = await client.storage.upload(fileBuffer, 'image.jpg', { pin: true });
    * ```
    */
   async upload(
     file: File | Blob | ArrayBuffer | Uint8Array | ReadableStream<Uint8Array>,
-    name?: string
+    name?: string,
+    options?: {
+      pin?: boolean;
+    }
   ): Promise<StorageUploadResponse> {
     // Create FormData for multipart upload
     const formData = new FormData();
@@ -100,6 +105,10 @@ export class StorageClient {
         "Unsupported file type. Use File, Blob, ArrayBuffer, Uint8Array, or ReadableStream."
       );
     }
+
+    // Add pin flag (default: true)
+    const shouldPin = options?.pin !== false; // Default to true
+    formData.append("pin", shouldPin ? "true" : "false");
 
     return this.httpClient.uploadFile<StorageUploadResponse>(
       "/v1/storage/upload",
