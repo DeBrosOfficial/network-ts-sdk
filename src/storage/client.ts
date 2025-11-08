@@ -202,6 +202,64 @@ export class StorageClient {
   }
 
   /**
+   * Retrieve content from IPFS by CID and return the full Response object
+   * Useful when you need access to response headers (e.g., content-length)
+   *
+   * @param cid - Content ID to retrieve
+   * @returns Response object with body stream and headers
+   *
+   * @example
+   * ```ts
+   * const response = await client.storage.getBinary(cid);
+   * const contentLength = response.headers.get('content-length');
+   * const reader = response.body.getReader();
+   * // ... read stream
+   * ```
+   */
+  async getBinary(cid: string): Promise<Response> {
+    // Retry logic for content retrieval - content may not be immediately available
+    // after upload due to eventual consistency in IPFS Cluster
+    // IPFS Cluster pins can take 2-3+ seconds to complete across all nodes
+    const maxAttempts = 8;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await this.httpClient.getBinary(
+          `/v1/storage/get/${cid}`
+        );
+
+        if (!response) {
+          throw new Error("Response is null");
+        }
+
+        return response;
+      } catch (error: any) {
+        lastError = error;
+
+        // Check if this is a 404 error (content not found)
+        const isNotFound =
+          error?.httpStatus === 404 ||
+          error?.message?.includes("not found") ||
+          error?.message?.includes("404");
+
+        // If it's not a 404 error, or this is the last attempt, give up
+        if (!isNotFound || attempt === maxAttempts) {
+          throw error;
+        }
+
+        // Wait before retrying (exponential backoff: 400ms, 800ms, 1200ms, etc.)
+        // This gives up to ~12 seconds total wait time, covering typical pin completion
+        const backoffMs = attempt * 2500;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+
+    // This should never be reached, but TypeScript needs it
+    throw lastError || new Error("Failed to retrieve content");
+  }
+
+  /**
    * Unpin a CID
    *
    * @param cid - Content ID to unpin
