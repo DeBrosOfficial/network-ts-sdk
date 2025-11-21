@@ -144,14 +144,14 @@ export class HttpClient {
           typeof options.body === "string"
             ? JSON.parse(options.body)
             : options.body;
-        
+
         if (body.sql) {
           // Direct SQL query (query/exec endpoints)
           queryDetails = `SQL: ${body.sql}`;
           if (body.args && body.args.length > 0) {
-            queryDetails += ` | Args: [${body.args.map((a: any) => 
-              typeof a === 'string' ? `"${a}"` : a
-            ).join(', ')}]`;
+            queryDetails += ` | Args: [${body.args
+              .map((a: any) => (typeof a === "string" ? `"${a}"` : a))
+              .join(", ")}]`;
           }
         } else if (body.table) {
           // Table-based query (find/find-one/select endpoints)
@@ -189,7 +189,9 @@ export class HttpClient {
       );
       const duration = performance.now() - startTime;
       if (typeof console !== "undefined") {
-        const logMessage = `[HttpClient] ${method} ${path} completed in ${duration.toFixed(2)}ms`;
+        const logMessage = `[HttpClient] ${method} ${path} completed in ${duration.toFixed(
+          2
+        )}ms`;
         if (queryDetails) {
           console.log(logMessage);
           console.log(`[HttpClient]   ${queryDetails}`);
@@ -201,61 +203,24 @@ export class HttpClient {
     } catch (error) {
       const duration = performance.now() - startTime;
       if (typeof console !== "undefined") {
-        // Cache "key not found" (404 or error message) is expected behavior - don't log as error
-        const isCacheGetNotFound =
-          path === "/v1/cache/get" &&
-          error instanceof SDKError &&
-          (error.httpStatus === 404 ||
-            (error.httpStatus === 500 &&
-              error.message?.toLowerCase().includes("key not found")));
-
-        // "Not found" (404) for blocked_users is expected behavior - don't log as error
-        // This happens when checking if users are blocked (most users aren't blocked)
-        const isBlockedUsersNotFound =
+        // For 404 errors on find-one calls, log at warn level (not error) since "not found" is expected
+        // Application layer handles these cases in try-catch blocks
+        const is404FindOne =
           path === "/v1/rqlite/find-one" &&
           error instanceof SDKError &&
-          error.httpStatus === 404 &&
-          options.body &&
-          (() => {
-            try {
-              const body =
-                typeof options.body === "string"
-                  ? JSON.parse(options.body)
-                  : options.body;
-              return body.table === "blocked_users";
-            } catch {
-              return false;
-            }
-          })();
+          error.httpStatus === 404;
 
-        // "Not found" (404) for conversation_participants is expected behavior - don't log as error
-        // This happens when checking if a user is a participant (e.g., on first group join)
-        const isConversationParticipantNotFound =
-          path === "/v1/rqlite/find-one" &&
-          error instanceof SDKError &&
-          error.httpStatus === 404 &&
-          options.body &&
-          (() => {
-            try {
-              const body =
-                typeof options.body === "string"
-                  ? JSON.parse(options.body)
-                  : options.body;
-              return body.table === "conversation_participants";
-            } catch {
-              return false;
-            }
-          })();
-
-        if (
-          isCacheGetNotFound ||
-          isBlockedUsersNotFound ||
-          isConversationParticipantNotFound
-        ) {
-          // Log cache miss, non-blocked status, or non-participant status as debug/info, not error
-          // These are expected behaviors
+        if (is404FindOne) {
+          // Log as warning for visibility, but not as error since it's expected behavior
+          console.warn(
+            `[HttpClient] ${method} ${path} returned 404 after ${duration.toFixed(
+              2
+            )}ms (expected for optional lookups)`
+          );
         } else {
-          const errorMessage = `[HttpClient] ${method} ${path} failed after ${duration.toFixed(2)}ms:`;
+          const errorMessage = `[HttpClient] ${method} ${path} failed after ${duration.toFixed(
+            2
+          )}ms:`;
           console.error(errorMessage, error);
           if (queryDetails) {
             console.error(`[HttpClient]   ${queryDetails}`);
