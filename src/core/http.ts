@@ -135,6 +135,51 @@ export class HttpClient {
       fetchOptions.body = JSON.stringify(options.body);
     }
 
+    // Extract and log SQL query details for rqlite operations
+    const isRqliteOperation = path.includes("/v1/rqlite/");
+    let queryDetails: string | null = null;
+    if (isRqliteOperation && options.body) {
+      try {
+        const body =
+          typeof options.body === "string"
+            ? JSON.parse(options.body)
+            : options.body;
+        
+        if (body.sql) {
+          // Direct SQL query (query/exec endpoints)
+          queryDetails = `SQL: ${body.sql}`;
+          if (body.args && body.args.length > 0) {
+            queryDetails += ` | Args: [${body.args.map((a: any) => 
+              typeof a === 'string' ? `"${a}"` : a
+            ).join(', ')}]`;
+          }
+        } else if (body.table) {
+          // Table-based query (find/find-one/select endpoints)
+          queryDetails = `Table: ${body.table}`;
+          if (body.criteria && Object.keys(body.criteria).length > 0) {
+            queryDetails += ` | Criteria: ${JSON.stringify(body.criteria)}`;
+          }
+          if (body.options) {
+            queryDetails += ` | Options: ${JSON.stringify(body.options)}`;
+          }
+          if (body.select) {
+            queryDetails += ` | Select: ${JSON.stringify(body.select)}`;
+          }
+          if (body.where) {
+            queryDetails += ` | Where: ${JSON.stringify(body.where)}`;
+          }
+          if (body.limit) {
+            queryDetails += ` | Limit: ${body.limit}`;
+          }
+          if (body.offset) {
+            queryDetails += ` | Offset: ${body.offset}`;
+          }
+        }
+      } catch (e) {
+        // Failed to parse body, ignore
+      }
+    }
+
     try {
       const result = await this.requestWithRetry(
         url.toString(),
@@ -144,9 +189,13 @@ export class HttpClient {
       );
       const duration = performance.now() - startTime;
       if (typeof console !== "undefined") {
-        console.log(
-          `[HttpClient] ${method} ${path} completed in ${duration.toFixed(2)}ms`
-        );
+        const logMessage = `[HttpClient] ${method} ${path} completed in ${duration.toFixed(2)}ms`;
+        if (queryDetails) {
+          console.log(logMessage);
+          console.log(`[HttpClient]   ${queryDetails}`);
+        } else {
+          console.log(logMessage);
+        }
       }
       return result;
     } catch (error) {
@@ -206,12 +255,11 @@ export class HttpClient {
           // Log cache miss, non-blocked status, or non-participant status as debug/info, not error
           // These are expected behaviors
         } else {
-          console.error(
-            `[HttpClient] ${method} ${path} failed after ${duration.toFixed(
-              2
-            )}ms:`,
-            error
-          );
+          const errorMessage = `[HttpClient] ${method} ${path} failed after ${duration.toFixed(2)}ms:`;
+          console.error(errorMessage, error);
+          if (queryDetails) {
+            console.error(`[HttpClient]   ${queryDetails}`);
+          }
         }
       }
       throw error;
