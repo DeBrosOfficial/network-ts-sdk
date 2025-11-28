@@ -8,6 +8,29 @@ export interface HttpClientConfig {
   fetch?: typeof fetch;
 }
 
+/**
+ * Create a fetch function with proper TLS configuration for staging certificates
+ * In Node.js, we need to configure TLS to accept Let's Encrypt staging certificates
+ */
+function createFetchWithTLSConfig(): typeof fetch {
+  // Check if we're in a Node.js environment
+  if (typeof process !== "undefined" && process.versions?.node) {
+    // For testing/staging/development: allow staging certificates
+    // Let's Encrypt staging certificates are self-signed and not trusted by default
+    const isDevelopmentOrStaging =
+      process.env.NODE_ENV !== "production" ||
+      process.env.DEBROS_ALLOW_STAGING_CERTS === "true" ||
+      process.env.DEBROS_USE_HTTPS === "true";
+
+    if (isDevelopmentOrStaging) {
+      // Allow self-signed/staging certificates
+      // WARNING: Only use this in development/testing environments
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    }
+  }
+  return globalThis.fetch;
+}
+
 export class HttpClient {
   private baseURL: string;
   private timeout: number;
@@ -22,7 +45,8 @@ export class HttpClient {
     this.timeout = config.timeout ?? 60000; // Increased from 30s to 60s for pub/sub operations
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelayMs = config.retryDelayMs ?? 1000;
-    this.fetch = config.fetch ?? globalThis.fetch;
+    // Use provided fetch or create one with proper TLS configuration for staging certificates
+    this.fetch = config.fetch ?? createFetchWithTLSConfig();
   }
 
   setApiKey(apiKey?: string) {
