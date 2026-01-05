@@ -88,4 +88,44 @@ describe("PubSub", () => {
 
     expect(events.length).toBeGreaterThanOrEqual(0);
   });
+
+  it("should get presence information", async () => {
+    const client = await createTestClient();
+    const presence = await client.pubsub.getPresence(topicName);
+    expect(presence.topic).toBe(topicName);
+    expect(Array.isArray(presence.members)).toBe(true);
+    expect(typeof presence.count).toBe("number");
+  });
+
+  it("should handle presence events in subscription", async () => {
+    const client = await createTestClient();
+    const joinedMembers: any[] = [];
+    const leftMembers: any[] = [];
+    const memberId = "test-user-" + Math.random().toString(36).substring(7);
+    const meta = { name: "Test User" };
+
+    const subscription = await client.pubsub.subscribe(topicName, {
+      presence: {
+        enabled: true,
+        memberId,
+        meta,
+        onJoin: (member) => joinedMembers.push(member),
+        onLeave: (member) => leftMembers.push(member),
+      },
+    });
+
+    expect(subscription.hasPresence()).toBe(true);
+
+    // Wait for join event
+    await delay(1000);
+
+    // Some gateways might send the self-join event
+    // Check if we can get presence from subscription
+    const members = await subscription.getPresence();
+    expect(Array.isArray(members)).toBe(true);
+
+    // Cleanup
+    subscription.close();
+    await delay(500);
+  });
 });

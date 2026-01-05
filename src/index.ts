@@ -5,6 +5,7 @@ import { PubSubClient } from "./pubsub/client";
 import { NetworkClient } from "./network/client";
 import { CacheClient } from "./cache/client";
 import { StorageClient } from "./storage/client";
+import { FunctionsClient, FunctionsClientConfig } from "./functions/client";
 import { WSClientConfig } from "./core/ws";
 import {
   StorageAdapter,
@@ -17,6 +18,7 @@ export interface ClientConfig extends Omit<HttpClientConfig, "fetch"> {
   jwt?: string;
   storage?: StorageAdapter;
   wsConfig?: Partial<WSClientConfig>;
+  functionsConfig?: FunctionsClientConfig;
   fetch?: typeof fetch;
 }
 
@@ -27,6 +29,7 @@ export interface Client {
   network: NetworkClient;
   cache: CacheClient;
   storage: StorageClient;
+  functions: FunctionsClient;
 }
 
 export function createClient(config: ClientConfig): Client {
@@ -58,6 +61,7 @@ export function createClient(config: ClientConfig): Client {
   const network = new NetworkClient(httpClient);
   const cache = new CacheClient(httpClient);
   const storage = new StorageClient(httpClient);
+  const functions = new FunctionsClient(httpClient, config.functionsConfig);
 
   return {
     auth,
@@ -66,6 +70,7 @@ export function createClient(config: ClientConfig): Client {
     network,
     cache,
     storage,
+    functions,
   };
 }
 
@@ -79,16 +84,21 @@ export { PubSubClient, Subscription } from "./pubsub/client";
 export { NetworkClient } from "./network/client";
 export { CacheClient } from "./cache/client";
 export { StorageClient } from "./storage/client";
+export { FunctionsClient } from "./functions/client";
 export { SDKError } from "./errors";
 export { MemoryStorage, LocalStorageAdapter } from "./auth/types";
 export type { StorageAdapter, AuthConfig, WhoAmI } from "./auth/types";
 export type * from "./db/types";
 export type {
-  Message,
   MessageHandler,
   ErrorHandler,
   CloseHandler,
-} from "./pubsub/client";
+  PresenceMember,
+  PresenceResponse,
+  PresenceOptions,
+  SubscribeOptions,
+} from "./pubsub/types";
+export { type PubSubMessage } from "./pubsub/types";
 export type {
   PeerInfo,
   NetworkStatus,
@@ -114,3 +124,5 @@ export type {
   StoragePinResponse,
   StorageStatus,
 } from "./storage/client";
+export type { FunctionsClientConfig } from "./functions/client";
+export type * from "./functions/types";

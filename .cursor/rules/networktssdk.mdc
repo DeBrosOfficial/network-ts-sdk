@@ -1,0 +1,89 @@
+---
+alwaysApply: true
+---
+
+# AI Instructions
+
+You have access to the **networktssdk** MCP (Model Context Protocol) server for this project. This MCP provides deep, pre-analyzed context about the codebase that is far more accurate than default file searching.
+
+## IMPORTANT: Always Use MCP First
+
+**Before making any code changes or answering questions about this codebase, ALWAYS consult the MCP tools first.**
+
+The MCP has pre-indexed the entire codebase with semantic understanding, embeddings, and structural analysis. While you can use your own file search capabilities, the MCP provides much better context because:
+- It understands code semantics, not just text matching
+- It has pre-analyzed the architecture, patterns, and relationships
+- It can answer questions about intent and purpose, not just content
+
+## Available MCP Tools
+
+### Code Understanding
+- `networktssdk_ask_question` - Ask natural language questions about the codebase. Use this for "how does X work?", "where is Y implemented?", "what does Z do?" questions. The MCP will search relevant code and provide informed answers.
+- `networktssdk_search_code` - Semantic code search. Find code by meaning, not just text. Great for finding implementations, patterns, or related functionality.
+- `networktssdk_get_architecture` - Get the full project architecture overview including tech stack, design patterns, domain entities, and API endpoints.
+- `networktssdk_get_file_summary` - Get a detailed summary of what a specific file does, its purpose, exports, and responsibilities.
+- `networktssdk_find_function` - Find a specific function or method definition by name across the codebase.
+- `networktssdk_list_functions` - List all functions defined in a specific file.
+
+### Skills (Learned Procedures)
+Skills are reusable procedures that the agent has learned about this specific project (e.g., "how to deploy", "how to run tests", "how to add a new API endpoint").
+
+- `networktssdk_list_skills` - List all learned skills for this project.
+- `networktssdk_get_skill` - Get detailed information about a specific skill including its step-by-step procedure.
+- `networktssdk_execute_skill` - Get the procedure for a learned skill so you can execute it step by step. Returns prerequisites, warnings, and commands to run.
+- `networktssdk_learn_skill` - Teach the agent a new skill. The agent will explore, discover, and memorize how to perform this task.
+- `networktssdk_get_learning_status` - Check the status of an ongoing skill learning session.
+- `networktssdk_answer_question` - Answer a question that the learning agent asked during skill learning.
+- `networktssdk_cancel_learning` - Cancel an active learning session.
+- `networktssdk_forget_skill` - Delete a learned skill.
+- `networktssdk_update_skill` - Update a learned skill with corrections or new information (e.g., 'Use .env.prod instead of .env', 'Add step to backup database first', 'The port should be 3000 not 8080').
+
+#### Skill Learning Workflow (IMPORTANT)
+
+When learning a skill, follow this **collaborative, goal-oriented workflow**. You (Cursor) are the executor, the MCP agent provides guidance:
+
+**Goal-Oriented Learning**: The agent identifies specific GOALS (pieces of information to gather) and tracks progress by goal completion, not by iterations.
+
+1. **Start Learning**: Call `learn_skill` with name and detailed description
+2. **Monitor Progress**: Call `get_learning_status` to check progress
+3. **Handle Status Responses**:
+   - `active` → Learning in progress, check again in a few seconds
+   - `waiting_input` → The agent has a question. Read it and call `answer_question` with your response
+   - `waiting_execution` → **IMPORTANT**: The agent needs you to run a command!
+     - Read the `pendingExecution.command` from the response
+     - **Execute the command yourself** using your terminal access
+     - Call `answer_question` with the command output
+   - `completed` → Skill learned successfully!
+   - `failed` → Check errors and try again
+4. **Repeat** steps 2-3 until status is `completed`
+
+**Key Insight**: The MCP agent runs on the server and cannot SSH to remote servers directly. When it needs remote access, it generates the SSH command for YOU to execute. You have terminal access - use it!
+
+**User Override Commands**: If the agent gets stuck, you can include these keywords in your answer:
+- `COMPLETE` or `SKIP` - Skip to synthesis phase and generate the skill from current data
+- `PHASE:synthesizing` - Force transition to drafting phase
+- `GOAL:goal_id=value` - Directly provide a goal's value (e.g., `GOAL:cluster_secret=abc123`)
+- `I have provided X` - Tell the agent it already has certain information
+
+**Example for `waiting_execution`**:
+```
+// Status response shows:
+// pendingExecution: { command: "ssh root@192.168.1.1 'ls -la /home/user/.orama'" }
+// 
+// You should:
+// 1. Run the command in your terminal
+// 2. Get the output
+// 3. Call answer_question with the output
+```
+
+## Recommended Workflow
+
+1. **For questions:** Use `networktssdk_ask_question` or `networktssdk_search_code` to understand the codebase.
+---
+
+# Polybase SDK (or similar Decentralized Web3 SDK)
+
+This project is a TypeScript-based Software Development Kit (SDK) designed to provide a high-level interface for interacting with a decentralized backend infrastructure. It abstracts complex networking, security, and data persistence tasks into a suite of client modules, allowing developers to manage authentication, execute SQL-like queries against a distributed database, interact with P2P networks, and handle real-time messaging via WebSockets. The SDK focuses on providing a familiar, developer-friendly experience (similar to Firebase or Supabase) but tailored for decentralized environments, featuring built-in support for caching, file storage, and identity verification.
+
+**Architecture:** Client-Side SDK (Modular Library)
+

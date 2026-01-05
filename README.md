@@ -215,6 +215,55 @@ const topics = await client.pubsub.topics();
 console.log("Active topics:", topics);
 ```
 
+### Presence Support
+
+The SDK supports real-time presence tracking, allowing you to see who is currently subscribed to a topic.
+
+#### Subscribe with Presence
+
+Enable presence by providing `presence` options in `subscribe`:
+
+```typescript
+const subscription = await client.pubsub.subscribe("room.123", {
+  onMessage: (msg) => console.log("Message:", msg.data),
+  presence: {
+    enabled: true,
+    memberId: "user-alice",
+    meta: { displayName: "Alice", avatar: "URL" },
+    onJoin: (member) => {
+      console.log(`${member.memberId} joined at ${new Date(member.joinedAt)}`);
+      console.log("Meta:", member.meta);
+    },
+    onLeave: (member) => {
+      console.log(`${member.memberId} left`);
+    },
+  },
+});
+```
+
+#### Get Presence for a Topic
+
+Query current members without subscribing:
+
+```typescript
+const presence = await client.pubsub.getPresence("room.123");
+console.log(`Total members: ${presence.count}`);
+presence.members.forEach((member) => {
+  console.log(`- ${member.memberId} (joined: ${new Date(member.joinedAt)})`);
+});
+```
+
+#### Subscription Helpers
+
+Get presence information from an active subscription:
+
+```typescript
+if (subscription.hasPresence()) {
+  const members = await subscription.getPresence();
+  console.log("Current members:", members);
+}
+```
+
 ### Authentication
 
 #### Switch API Key

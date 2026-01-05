@@ -1,17 +1,16 @@
 import { HttpClient } from "../core/http";
 import { WSClient, WSClientConfig } from "../core/ws";
-
-export interface Message {
-  data: string;
-  topic: string;
-  timestamp: number;
-}
-
-export interface RawEnvelope {
-  data: string; // base64-encoded
-  timestamp: number;
-  topic: string;
-}
+import {
+  PubSubMessage,
+  RawEnvelope,
+  MessageHandler,
+  ErrorHandler,
+  CloseHandler,
+  SubscribeOptions,
+  PresenceResponse,
+  PresenceMember,
+  PresenceOptions,
+} from "./types";
 
 // Cross-platform base64 encoding/decoding utilities
 function base64Encode(str: string): string {
@@ -53,10 +52,6 @@ function base64Decode(b64: string): string {
   }
   throw new Error("No base64 decoding method available");
 }
-
-export type MessageHandler = (message: Message) => void;
-export type ErrorHandler = (error: Error) => void;
-export type CloseHandler = () => void;
 
 /**
  * Simple PubSub client - one WebSocket connection per topic
@@ -105,21 +100,38 @@ export class PubSubClient {
   }
 
   /**
+   * Get current presence for a topic without subscribing
+   */
+  async getPresence(topic: string): Promise<PresenceResponse> {
+    const response = await this.httpClient.get<PresenceResponse>(
+      `/v1/pubsub/presence?topic=${encodeURIComponent(topic)}`
+    );
+    return response;
+  }
+
+  /**
    * Subscribe to a topic via WebSocket
    * Creates one WebSocket connection per topic
    */
   async subscribe(
     topic: string,
-    handlers: {
-      onMessage?: MessageHandler;
-      onError?: ErrorHandler;
-      onClose?: CloseHandler;
-    } = {}
+    options: SubscribeOptions = {}
   ): Promise<Subscription> {
     // Build WebSocket URL for this topic
     const wsUrl = new URL(this.wsConfig.wsURL || "ws://127.0.0.1:6001");
     wsUrl.pathname = "/v1/pubsub/ws";
     wsUrl.searchParams.set("topic", topic);
+
+    // Handle presence options
+    let presence: PresenceOptions | undefined;
+    if (options.presence?.enabled) {
+      presence = options.presence;
+      wsUrl.searchParams.set("presence", "true");
+      wsUrl.searchParams.set("member_id", presence.memberId);
+      if (presence.meta) {
+        wsUrl.searchParams.set("member_meta", JSON.stringify(presence.meta));
+      }
+    }
 
     const authToken = this.httpClient.getApiKey() ?? this.httpClient.getToken();
 
@@ -133,16 +145,18 @@ export class PubSubClient {
     await wsClient.connect();
 
     // Create subscription wrapper
-    const subscription = new Subscription(wsClient, topic);
+    const subscription = new Subscription(wsClient, topic, presence, () =>
+      this.getPresence(topic)
+    );
 
-    if (handlers.onMessage) {
-      subscription.onMessage(handlers.onMessage);
+    if (options.onMessage) {
+      subscription.onMessage(options.onMessage);
     }
-    if (handlers.onError) {
-      subscription.onError(handlers.onError);
+    if (options.onError) {
+      subscription.onError(options.onError);
     }
-    if (handlers.onClose) {
-      subscription.onClose(handlers.onClose);
+    if (options.onClose) {
+      subscription.onClose(options.onClose);
     }
 
     return subscription;
@@ -155,6 +169,7 @@ export class PubSubClient {
 export class Subscription {
   private wsClient: WSClient;
   private topic: string;
+  private presenceOptions?: PresenceOptions;
   private messageHandlers: Set<MessageHandler> = new Set();
   private errorHandlers: Set<ErrorHandler> = new Set();
   private closeHandlers: Set<CloseHandler> = new Set();
@@ -162,10 +177,18 @@ export class Subscription {
   private wsMessageHandler: ((data: string) => void) | null = null;
   private wsErrorHandler: ((error: Error) => void) | null = null;
   private wsCloseHandler: (() => void) | null = null;
+  private getPresenceFn: () => Promise<PresenceResponse>;
 
-  constructor(wsClient: WSClient, topic: string) {
+  constructor(
+    wsClient: WSClient,
+    topic: string,
+    presenceOptions: PresenceOptions | undefined,
+    getPresenceFn: () => Promise<PresenceResponse>
+  ) {
     this.wsClient = wsClient;
     this.topic = topic;
+    this.presenceOptions = presenceOptions;
+    this.getPresenceFn = getPresenceFn;
 
     // Register message handler
     this.wsMessageHandler = (data) => {
@@ -177,6 +200,37 @@ export class Subscription {
         if (!envelope || typeof envelope !== "object") {
           throw new Error("Invalid envelope: not an object");
         }
+
+        // Handle presence events
+        if (
+          envelope.type === "presence.join" ||
+          envelope.type === "presence.leave"
+        ) {
+          if (!envelope.member_id) {
+            console.warn("[Subscription] Presence event missing member_id");
+            return;
+          }
+
+          const presenceMember: PresenceMember = {
+            memberId: envelope.member_id,
+            joinedAt: envelope.timestamp,
+            meta: envelope.meta,
+          };
+
+          if (
+            envelope.type === "presence.join" &&
+            this.presenceOptions?.onJoin
+          ) {
+            this.presenceOptions.onJoin(presenceMember);
+          } else if (
+            envelope.type === "presence.leave" &&
+            this.presenceOptions?.onLeave
+          ) {
+            this.presenceOptions.onLeave(presenceMember);
+          }
+          return; // Don't call regular onMessage for presence events
+        }
+
         if (!envelope.data || typeof envelope.data !== "string") {
           throw new Error("Invalid envelope: missing or invalid data field");
         }
@@ -192,7 +246,7 @@ export class Subscription {
         // Decode base64 data
         const messageData = base64Decode(envelope.data);
 
-        const message: Message = {
+        const message: PubSubMessage = {
           topic: envelope.topic,
           data: messageData,
           timestamp: envelope.timestamp,
@@ -221,6 +275,25 @@ export class Subscription {
       this.closeHandlers.forEach((handler) => handler());
     };
     this.wsClient.onClose(this.wsCloseHandler);
+  }
+
+  /**
+   * Get current presence (requires presence.enabled on subscribe)
+   */
+  async getPresence(): Promise<PresenceMember[]> {
+    if (!this.presenceOptions?.enabled) {
+      throw new Error("Presence is not enabled for this subscription");
+    }
+
+    const response = await this.getPresenceFn();
+    return response.members;
+  }
+
+  /**
+   * Check if presence is enabled for this subscription
+   */
+  hasPresence(): boolean {
+    return !!this.presenceOptions?.enabled;
   }
 
   /**
