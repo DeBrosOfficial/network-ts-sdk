@@ -1,11 +1,12 @@
 import { SDKError } from "../errors";
 
 export interface HttpClientConfig {
-  baseURL: string;
+  baseURL: string | string[];
   timeout?: number;
   maxRetries?: number;
   retryDelayMs?: number;
   fetch?: typeof fetch;
+  gatewayHealthCheckCooldownMs?: number;
 }
 
 /**
@@ -31,22 +32,38 @@ function createFetchWithTLSConfig(): typeof fetch {
   return globalThis.fetch;
 }
 
+interface GatewayHealth {
+  url: string;
+  unhealthyUntil: number | null; // Timestamp when gateway becomes healthy again
+}
+
 export class HttpClient {
-  private baseURL: string;
+  private baseURLs: string[];
+  private currentURLIndex: number = 0;
   private timeout: number;
   private maxRetries: number;
   private retryDelayMs: number;
   private fetch: typeof fetch;
   private apiKey?: string;
   private jwt?: string;
+  private gatewayHealthCheckCooldownMs: number;
+  private gatewayHealth: Map<string, GatewayHealth>;
 
   constructor(config: HttpClientConfig) {
-    this.baseURL = config.baseURL.replace(/\/$/, "");
-    this.timeout = config.timeout ?? 60000; // Increased from 30s to 60s for pub/sub operations
+    this.baseURLs = (Array.isArray(config.baseURL) ? config.baseURL : [config.baseURL])
+      .map(url => url.replace(/\/$/, ""));
+    this.timeout = config.timeout ?? 60000;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelayMs = config.retryDelayMs ?? 1000;
+    this.gatewayHealthCheckCooldownMs = config.gatewayHealthCheckCooldownMs ?? 600000; // Default 10 minutes
     // Use provided fetch or create one with proper TLS configuration for staging certificates
     this.fetch = config.fetch ?? createFetchWithTLSConfig();
+
+    // Initialize gateway health tracking
+    this.gatewayHealth = new Map();
+    this.baseURLs.forEach(url => {
+      this.gatewayHealth.set(url, { url, unhealthyUntil: null });
+    });
   }
 
   setApiKey(apiKey?: string) {
@@ -121,6 +138,92 @@ export class HttpClient {
     return this.apiKey;
   }
 
+  /**
+   * Get the current base URL (for single gateway or current gateway in multi-gateway setup)
+   */
+  private getCurrentBaseURL(): string {
+    return this.baseURLs[this.currentURLIndex];
+  }
+
+  /**
+   * Get all base URLs (for WebSocket or other purposes that need all gateways)
+   */
+  getBaseURLs(): string[] {
+    return [...this.baseURLs];
+  }
+
+  /**
+   * Check if a gateway is healthy (not in cooldown period)
+   */
+  private isGatewayHealthy(url: string): boolean {
+    const health = this.gatewayHealth.get(url);
+    if (!health || health.unhealthyUntil === null) {
+      return true;
+    }
+    const now = Date.now();
+    if (now >= health.unhealthyUntil) {
+      // Cooldown period expired, mark as healthy again
+      health.unhealthyUntil = null;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Mark a gateway as unhealthy for the cooldown period
+   */
+  private markGatewayUnhealthy(url: string): void {
+    const health = this.gatewayHealth.get(url);
+    if (health) {
+      health.unhealthyUntil = Date.now() + this.gatewayHealthCheckCooldownMs;
+      if (typeof console !== "undefined") {
+        console.warn(
+          `[HttpClient] Gateway marked unhealthy for ${this.gatewayHealthCheckCooldownMs / 1000}s:`,
+          url
+        );
+      }
+    }
+  }
+
+  /**
+   * Try the next healthy gateway in the list
+   * Returns the index of the next healthy gateway, or -1 if none available
+   */
+  private findNextHealthyGateway(): number {
+    if (this.baseURLs.length <= 1) {
+      return -1; // No other gateways to try
+    }
+
+    const startIndex = this.currentURLIndex;
+    let attempts = 0;
+
+    // Try each gateway once (excluding current)
+    while (attempts < this.baseURLs.length - 1) {
+      const nextIndex = (startIndex + attempts + 1) % this.baseURLs.length;
+      const nextUrl = this.baseURLs[nextIndex];
+
+      if (this.isGatewayHealthy(nextUrl)) {
+        return nextIndex;
+      }
+
+      attempts++;
+    }
+
+    return -1; // No healthy gateways found
+  }
+
+  /**
+   * Move to the next healthy gateway
+   */
+  private moveToNextGateway(): boolean {
+    const nextIndex = this.findNextHealthyGateway();
+    if (nextIndex === -1) {
+      return false;
+    }
+    this.currentURLIndex = nextIndex;
+    return true;
+  }
+
   async request<T = any>(
     method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
@@ -132,7 +235,7 @@ export class HttpClient {
     } = {}
   ): Promise<T> {
     const startTime = performance.now(); // Track request start time
-    const url = new URL(this.baseURL + path);
+    const url = new URL(this.getCurrentBaseURL() + path);
     if (options.query) {
       Object.entries(options.query).forEach(([key, value]) => {
         url.searchParams.append(key, String(value));
@@ -261,8 +364,11 @@ export class HttpClient {
     url: string,
     options: RequestInit,
     attempt: number = 0,
-    startTime?: number // Track start time for timing across retries
+    startTime?: number, // Track start time for timing across retries
+    gatewayAttempt: number = 0 // Track gateway failover attempts
   ): Promise<any> {
+    const currentGatewayUrl = this.getCurrentBaseURL();
+
     try {
       const response = await this.fetch(url, options);
 
@@ -276,22 +382,61 @@ export class HttpClient {
         throw SDKError.fromResponse(response.status, body);
       }
 
+      // Request succeeded - return response
       const contentType = response.headers.get("content-type");
       if (contentType?.includes("application/json")) {
         return response.json();
       }
       return response.text();
     } catch (error) {
-      if (
+      const isRetryableError =
         error instanceof SDKError &&
-        attempt < this.maxRetries &&
-        [408, 429, 500, 502, 503, 504].includes(error.httpStatus)
-      ) {
+        [408, 429, 500, 502, 503, 504].includes(error.httpStatus);
+
+      const isNetworkError =
+        error instanceof TypeError ||
+        (error instanceof Error && error.message.includes('fetch'));
+
+      // Retry on the same gateway first (for retryable HTTP errors)
+      if (isRetryableError && attempt < this.maxRetries) {
+        if (typeof console !== "undefined") {
+          console.warn(
+            `[HttpClient] Retrying request on same gateway (attempt ${attempt + 1}/${this.maxRetries}):`,
+            currentGatewayUrl
+          );
+        }
         await new Promise((resolve) =>
           setTimeout(resolve, this.retryDelayMs * (attempt + 1))
         );
-        return this.requestWithRetry(url, options, attempt + 1, startTime);
+        return this.requestWithRetry(url, options, attempt + 1, startTime, gatewayAttempt);
       }
+
+      // If all retries on current gateway failed, mark it unhealthy and try next gateway
+      if ((isNetworkError || isRetryableError) && gatewayAttempt < this.baseURLs.length - 1) {
+        // Mark current gateway as unhealthy
+        this.markGatewayUnhealthy(currentGatewayUrl);
+
+        // Try to move to next healthy gateway
+        if (this.moveToNextGateway()) {
+          if (typeof console !== "undefined") {
+            console.warn(
+              `[HttpClient] Gateway exhausted retries, trying next gateway (${gatewayAttempt + 1}/${this.baseURLs.length - 1}):`,
+              this.getCurrentBaseURL()
+            );
+          }
+
+          // Update URL to use the new gateway
+          const currentPath = url.substring(url.indexOf('/', 8)); // Get path after protocol://host
+          const newUrl = this.getCurrentBaseURL() + currentPath;
+
+          // Small delay before trying next gateway
+          await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
+
+          // Reset attempt counter for new gateway
+          return this.requestWithRetry(newUrl, options, 0, startTime, gatewayAttempt + 1);
+        }
+      }
+
       throw error;
     }
   }
@@ -338,7 +483,7 @@ export class HttpClient {
     }
   ): Promise<T> {
     const startTime = performance.now(); // Track upload start time
-    const url = new URL(this.baseURL + path);
+    const url = new URL(this.getCurrentBaseURL() + path);
     const headers: Record<string, string> = {
       ...this.getAuthHeaders(path),
       // Don't set Content-Type - browser will set it with boundary
@@ -391,7 +536,7 @@ export class HttpClient {
    * Get a binary response (returns Response object for streaming)
    */
   async getBinary(path: string): Promise<Response> {
-    const url = new URL(this.baseURL + path);
+    const url = new URL(this.getCurrentBaseURL() + path);
     const headers: Record<string, string> = {
       ...this.getAuthHeaders(path),
     };

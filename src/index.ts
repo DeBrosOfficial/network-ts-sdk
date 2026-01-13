@@ -49,9 +49,11 @@ export function createClient(config: ClientConfig): Client {
   });
 
   // Derive WebSocket URL from baseURL if not explicitly provided
+  // If multiple base URLs are provided, use the first one for WebSocket (primary gateway)
+  const primaryBaseURL = Array.isArray(config.baseURL) ? config.baseURL[0] : config.baseURL;
   const wsURL =
     config.wsConfig?.wsURL ??
-    config.baseURL.replace(/^http/, "ws").replace(/\/$/, "");
+    primaryBaseURL.replace(/^http/, "ws").replace(/\/$/, "");
 
   const db = new DBClient(httpClient);
   const pubsub = new PubSubClient(httpClient, {
