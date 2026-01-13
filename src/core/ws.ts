@@ -15,10 +15,11 @@ export type WSOpenHandler = () => void;
 
 /**
  * Simple WebSocket client with minimal abstractions
- * No complex reconnection, no heartbeats - keep it simple
+ * No complex reconnection, no failover - keep it simple
+ * Gateway failover is handled at the application layer
  */
 export class WSClient {
-  private url: string;
+  private wsURL: string;
   private timeout: number;
   private authToken?: string;
   private WebSocketClass: typeof WebSocket;
@@ -31,10 +32,17 @@ export class WSClient {
   private isClosed = false;
 
   constructor(config: WSClientConfig) {
-    this.url = config.wsURL;
+    this.wsURL = config.wsURL;
     this.timeout = config.timeout ?? 30000;
     this.authToken = config.authToken;
     this.WebSocketClass = config.WebSocket ?? WebSocket;
+  }
+
+  /**
+   * Get the current WebSocket URL
+   */
+  get url(): string {
+    return this.wsURL;
   }
 
   /**
@@ -56,7 +64,7 @@ export class WSClient {
 
         this.ws.addEventListener("open", () => {
           clearTimeout(timeout);
-          console.log("[WSClient] Connected to", this.url);
+          console.log("[WSClient] Connected to", this.wsURL);
           this.openHandlers.forEach((handler) => handler());
           resolve();
         });
@@ -71,6 +79,7 @@ export class WSClient {
           clearTimeout(timeout);
           const error = new SDKError("WebSocket error", 500, "WS_ERROR", event);
           this.errorHandlers.forEach((handler) => handler(error));
+          reject(error);
         });
 
         this.ws.addEventListener("close", () => {
@@ -88,7 +97,7 @@ export class WSClient {
    * Build WebSocket URL with auth token
    */
   private buildWSUrl(): string {
-    let url = this.url;
+    let url = this.wsURL;
 
     if (this.authToken) {
       const separator = url.includes("?") ? "&" : "?";

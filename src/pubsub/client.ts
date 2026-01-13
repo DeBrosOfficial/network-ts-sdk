@@ -55,7 +55,7 @@ function base64Decode(b64: string): string {
 
 /**
  * Simple PubSub client - one WebSocket connection per topic
- * No connection pooling, no reference counting - keep it simple
+ * Gateway failover is handled at the application layer
  */
 export class PubSubClient {
   private httpClient: HttpClient;
