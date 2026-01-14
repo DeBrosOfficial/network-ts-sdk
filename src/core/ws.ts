@@ -1,11 +1,17 @@
 import WebSocket from "isomorphic-ws";
 import { SDKError } from "../errors";
+import { NetworkErrorCallback } from "./http";
 
 export interface WSClientConfig {
   wsURL: string;
   timeout?: number;
   authToken?: string;
   WebSocket?: typeof WebSocket;
+  /**
+   * Callback invoked on WebSocket errors.
+   * Use this to trigger gateway failover at the application layer.
+   */
+  onNetworkError?: NetworkErrorCallback;
 }
 
 export type WSMessageHandler = (data: string) => void;
@@ -23,6 +29,7 @@ export class WSClient {
   private timeout: number;
   private authToken?: string;
   private WebSocketClass: typeof WebSocket;
+  private onNetworkError?: NetworkErrorCallback;
 
   private ws?: WebSocket;
   private messageHandlers: Set<WSMessageHandler> = new Set();
@@ -36,6 +43,14 @@ export class WSClient {
     this.timeout = config.timeout ?? 30000;
     this.authToken = config.authToken;
     this.WebSocketClass = config.WebSocket ?? WebSocket;
+    this.onNetworkError = config.onNetworkError;
+  }
+
+  /**
+   * Set the network error callback
+   */
+  setOnNetworkError(callback: NetworkErrorCallback | undefined): void {
+    this.onNetworkError = callback;
   }
 
   /**
@@ -57,9 +72,19 @@ export class WSClient {
 
         const timeout = setTimeout(() => {
           this.ws?.close();
-          reject(
-            new SDKError("WebSocket connection timeout", 408, "WS_TIMEOUT")
-          );
+          const error = new SDKError("WebSocket connection timeout", 408, "WS_TIMEOUT");
+
+          // Call the network error callback if configured
+          if (this.onNetworkError) {
+            this.onNetworkError(error, {
+              method: "WS",
+              path: this.wsURL,
+              isRetry: false,
+              attempt: 0,
+            });
+          }
+
+          reject(error);
         }, this.timeout);
 
         this.ws.addEventListener("open", () => {
@@ -78,6 +103,17 @@ export class WSClient {
           console.error("[WSClient] WebSocket error:", event);
           clearTimeout(timeout);
           const error = new SDKError("WebSocket error", 500, "WS_ERROR", event);
+
+          // Call the network error callback if configured
+          if (this.onNetworkError) {
+            this.onNetworkError(error, {
+              method: "WS",
+              path: this.wsURL,
+              isRetry: false,
+              attempt: 0,
+            });
+          }
+
           this.errorHandlers.forEach((handler) => handler(error));
           reject(error);
         });

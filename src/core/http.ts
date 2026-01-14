@@ -1,11 +1,35 @@
 import { SDKError } from "../errors";
 
+/**
+ * Context provided to the onNetworkError callback
+ */
+export interface NetworkErrorContext {
+  method: "GET" | "POST" | "PUT" | "DELETE" | "WS";
+  path: string;
+  isRetry: boolean;
+  attempt: number;
+}
+
+/**
+ * Callback invoked when a network error occurs.
+ * Use this to trigger gateway failover or other error handling.
+ */
+export type NetworkErrorCallback = (
+  error: SDKError,
+  context: NetworkErrorContext
+) => void;
+
 export interface HttpClientConfig {
   baseURL: string;
   timeout?: number;
   maxRetries?: number;
   retryDelayMs?: number;
   fetch?: typeof fetch;
+  /**
+   * Callback invoked on network errors (after all retries exhausted).
+   * Use this to trigger gateway failover at the application layer.
+   */
+  onNetworkError?: NetworkErrorCallback;
 }
 
 /**
@@ -39,6 +63,7 @@ export class HttpClient {
   private fetch: typeof fetch;
   private apiKey?: string;
   private jwt?: string;
+  private onNetworkError?: NetworkErrorCallback;
 
   constructor(config: HttpClientConfig) {
     this.baseURL = config.baseURL.replace(/\/$/, "");
@@ -47,6 +72,14 @@ export class HttpClient {
     this.retryDelayMs = config.retryDelayMs ?? 1000;
     // Use provided fetch or create one with proper TLS configuration for staging certificates
     this.fetch = config.fetch ?? createFetchWithTLSConfig();
+    this.onNetworkError = config.onNetworkError;
+  }
+
+  /**
+   * Set the network error callback
+   */
+  setOnNetworkError(callback: NetworkErrorCallback | undefined): void {
+    this.onNetworkError = callback;
   }
 
   setApiKey(apiKey?: string) {
@@ -258,6 +291,27 @@ export class HttpClient {
           }
         }
       }
+
+      // Call the network error callback if configured
+      // This allows the app to trigger gateway failover
+      if (this.onNetworkError) {
+        // Convert native errors (TypeError, AbortError) to SDKError for the callback
+        const sdkError =
+          error instanceof SDKError
+            ? error
+            : new SDKError(
+                error instanceof Error ? error.message : String(error),
+                0, // httpStatus 0 indicates network-level failure
+                "NETWORK_ERROR"
+              );
+        this.onNetworkError(sdkError, {
+          method,
+          path,
+          isRetry: false,
+          attempt: this.maxRetries, // All retries exhausted
+        });
+      }
+
       throw error;
     } finally {
       clearTimeout(timeoutId);
@@ -397,6 +451,25 @@ export class HttpClient {
           error
         );
       }
+
+      // Call the network error callback if configured
+      if (this.onNetworkError) {
+        const sdkError =
+          error instanceof SDKError
+            ? error
+            : new SDKError(
+                error instanceof Error ? error.message : String(error),
+                0,
+                "NETWORK_ERROR"
+              );
+        this.onNetworkError(sdkError, {
+          method: "POST",
+          path,
+          isRetry: false,
+          attempt: this.maxRetries,
+        });
+      }
+
       throw error;
     } finally {
       clearTimeout(timeoutId);
@@ -425,17 +498,33 @@ export class HttpClient {
       const response = await this.fetch(url.toString(), fetchOptions);
       if (!response.ok) {
         clearTimeout(timeoutId);
-        const error = await response.json().catch(() => ({
+        const errorBody = await response.json().catch(() => ({
           error: response.statusText,
         }));
-        throw SDKError.fromResponse(response.status, error);
+        throw SDKError.fromResponse(response.status, errorBody);
       }
       return response;
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error instanceof SDKError) {
-        throw error;
+
+      // Call the network error callback if configured
+      if (this.onNetworkError) {
+        const sdkError =
+          error instanceof SDKError
+            ? error
+            : new SDKError(
+                error instanceof Error ? error.message : String(error),
+                0,
+                "NETWORK_ERROR"
+              );
+        this.onNetworkError(sdkError, {
+          method: "GET",
+          path,
+          isRetry: false,
+          attempt: 0,
+        });
       }
+
       throw error;
     }
   }

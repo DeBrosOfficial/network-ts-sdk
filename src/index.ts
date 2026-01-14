@@ -1,4 +1,4 @@
-import { HttpClient, HttpClientConfig } from "./core/http";
+import { HttpClient, HttpClientConfig, NetworkErrorCallback } from "./core/http";
 import { AuthClient } from "./auth/client";
 import { DBClient } from "./db/client";
 import { PubSubClient } from "./pubsub/client";
@@ -20,6 +20,11 @@ export interface ClientConfig extends Omit<HttpClientConfig, "fetch"> {
   wsConfig?: Partial<Omit<WSClientConfig, "wsURL">>;
   functionsConfig?: FunctionsClientConfig;
   fetch?: typeof fetch;
+  /**
+   * Callback invoked on network errors (HTTP and WebSocket).
+   * Use this to trigger gateway failover at the application layer.
+   */
+  onNetworkError?: NetworkErrorCallback;
 }
 
 export interface Client {
@@ -39,6 +44,7 @@ export function createClient(config: ClientConfig): Client {
     maxRetries: config.maxRetries,
     retryDelayMs: config.retryDelayMs,
     fetch: config.fetch,
+    onNetworkError: config.onNetworkError,
   });
 
   const auth = new AuthClient({
@@ -55,6 +61,7 @@ export function createClient(config: ClientConfig): Client {
   const pubsub = new PubSubClient(httpClient, {
     ...config.wsConfig,
     wsURL,
+    onNetworkError: config.onNetworkError,
   });
   const network = new NetworkClient(httpClient);
   const cache = new CacheClient(httpClient);
@@ -73,6 +80,7 @@ export function createClient(config: ClientConfig): Client {
 }
 
 export { HttpClient } from "./core/http";
+export type { NetworkErrorCallback, NetworkErrorContext } from "./core/http";
 export { WSClient } from "./core/ws";
 export { AuthClient } from "./auth/client";
 export { DBClient } from "./db/client";
