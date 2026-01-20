@@ -1,15 +1,36 @@
 {
   "name": "@debros/network-ts-sdk",
-  "version": "0.4.3",
-  "description": "TypeScript SDK for DeBros Network Gateway",
+  "version": "0.6.0",
+  "description": "TypeScript SDK for DeBros Network Gateway - Database, PubSub, Cache, Storage, and more",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "license": "MIT",
   "author": "DeBrosOfficial",
+  "keywords": [
+    "debros",
+    "network",
+    "sdk",
+    "typescript",
+    "database",
+    "rqlite",
+    "pubsub",
+    "websocket",
+    "cache",
+    "olric",
+    "ipfs",
+    "storage",
+    "wasm",
+    "serverless",
+    "distributed",
+    "gateway"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/DeBrosOfficial/network-ts-sdk/tree/v0.0.1"
+    "url": "https://github.com/DeBrosOfficial/network-ts-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/DeBrosOfficial/network-ts-sdk/issues"
   },
   "exports": {
     ".": {
@@ -38,9 +59,11 @@
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
     "dotenv": "^17.2.3",
     "eslint": "^8.0.0",
     "tsup": "^8.0.0",
+    "typedoc": "^0.25.0",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
   },

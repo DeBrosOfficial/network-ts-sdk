@@ -367,6 +367,7 @@ interface ClientConfig {
   timeout?: number; // Request timeout in ms (default: 30000)
   maxRetries?: number; // Max retry attempts (default: 3)
   retryDelayMs?: number; // Delay between retries (default: 1000)
+  debug?: boolean; // Enable debug logging with full SQL queries (default: false)
   storage?: StorageAdapter; // For persisting JWT/API key (default: MemoryStorage)
   wsConfig?: Partial<WSClientConfig>; // WebSocket configuration
   fetch?: typeof fetch; // Custom fetch implementation

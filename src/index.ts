@@ -43,6 +43,7 @@ export function createClient(config: ClientConfig): Client {
     timeout: config.timeout,
     maxRetries: config.maxRetries,
     retryDelayMs: config.retryDelayMs,
+    debug: config.debug,
     fetch: config.fetch,
     onNetworkError: config.onNetworkError,
   });

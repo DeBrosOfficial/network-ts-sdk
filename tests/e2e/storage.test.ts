@@ -85,7 +85,7 @@ describe("Storage", () => {
     const client = await createTestClient();
     // First upload and pin a file
     const testContent = "File for status check";
-    const testFile = new File([testContent], "status-test.txt", {
+    const testFile = new File([testContent], "status-test", {
       type: "text/plain",
     });
 

@@ -26,6 +26,10 @@ export interface HttpClientConfig {
   retryDelayMs?: number;
   fetch?: typeof fetch;
   /**
+   * Enable debug logging (includes full SQL queries and args). Default: false
+   */
+  debug?: boolean;
+  /**
    * Callback invoked on network errors (after all retries exhausted).
    * Use this to trigger gateway failover at the application layer.
    */
@@ -63,6 +67,7 @@ export class HttpClient {
   private fetch: typeof fetch;
   private apiKey?: string;
   private jwt?: string;
+  private debug: boolean;
   private onNetworkError?: NetworkErrorCallback;
 
   constructor(config: HttpClientConfig) {
@@ -72,6 +77,7 @@ export class HttpClient {
     this.retryDelayMs = config.retryDelayMs ?? 1000;
     // Use provided fetch or create one with proper TLS configuration for staging certificates
     this.fetch = config.fetch ?? createFetchWithTLSConfig();
+    this.debug = config.debug ?? false;
     this.onNetworkError = config.onNetworkError;
   }
 
@@ -256,7 +262,7 @@ export class HttpClient {
         const logMessage = `[HttpClient] ${method} ${path} completed in ${duration.toFixed(
           2
         )}ms`;
-        if (queryDetails) {
+        if (queryDetails && this.debug) {
           console.log(logMessage);
           console.log(`[HttpClient]   ${queryDetails}`);
         } else {
@@ -286,7 +292,7 @@ export class HttpClient {
             2
           )}ms:`;
           console.error(errorMessage, error);
-          if (queryDetails) {
+          if (queryDetails && this.debug) {
             console.error(`[HttpClient]   ${queryDetails}`);
           }
         }
