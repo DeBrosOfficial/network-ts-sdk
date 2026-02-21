@@ -20,7 +20,7 @@ describe("Cache", () => {
     } catch (err) {
       // Ignore errors during cleanup
     }
-  });
+  }, 30000); // 30 second timeout for slow SCAN operations
 
   it("should check cache health", async () => {
     const client = await createTestClient();

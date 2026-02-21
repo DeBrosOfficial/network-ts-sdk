@@ -1,6 +1,6 @@
 {
   "name": "@debros/network-ts-sdk",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "TypeScript SDK for DeBros Network Gateway - Database, PubSub, Cache, Storage, and more",
   "type": "module",
   "main": "./dist/index.js",

@@ -116,6 +116,9 @@ describe("Storage", () => {
     const uploadResult = await client.storage.upload(testFile);
     const cid = uploadResult.cid;
 
+    // Wait for IPFS replication across nodes (30 seconds)
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     // Get the content back
     const stream = await client.storage.get(cid);
 

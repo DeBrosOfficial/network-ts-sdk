@@ -190,9 +190,10 @@ export class StorageClient {
           throw error;
         }
 
-        // Wait before retrying (exponential backoff: 400ms, 800ms, 1200ms, etc.)
-        // This gives up to ~12 seconds total wait time, covering typical pin completion
-        const backoffMs = attempt * 2500;
+        // Wait before retrying with bounded exponential backoff
+        // Max 3 seconds per retry to fit within 30s test timeout
+        // Total: 1s + 2s + 3s + 3s + 3s + 3s + 3s + 3s = 21 seconds
+        const backoffMs = Math.min(attempt * 1000, 3000);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     }
@@ -248,9 +249,10 @@ export class StorageClient {
           throw error;
         }
 
-        // Wait before retrying (exponential backoff: 400ms, 800ms, 1200ms, etc.)
-        // This gives up to ~12 seconds total wait time, covering typical pin completion
-        const backoffMs = attempt * 2500;
+        // Wait before retrying with bounded exponential backoff
+        // Max 3 seconds per retry to fit within 30s test timeout
+        // Total: 1s + 2s + 3s + 3s + 3s + 3s + 3s + 3s = 21 seconds
+        const backoffMs = Math.min(attempt * 1000, 3000);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     }

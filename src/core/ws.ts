@@ -138,7 +138,11 @@ export class WSClient {
     if (this.authToken) {
       const separator = url.includes("?") ? "&" : "?";
       const paramName = this.authToken.startsWith("ak_") ? "api_key" : "token";
-      url += `${separator}${paramName}=${encodeURIComponent(this.authToken)}`;
+      // API keys contain a colon (ak_xxx:namespace) that must not be percent-encoded
+      const encodedToken = this.authToken.startsWith("ak_")
+        ? this.authToken
+        : encodeURIComponent(this.authToken);
+      url += `${separator}${paramName}=${encodedToken}`;
     }
 
     return url;
